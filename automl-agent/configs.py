@@ -5,10 +5,11 @@ load_dotenv()
 
 class Configs:
     OPENAI_KEY = ""  # your openai's account api key
-    HF_KEY = os.getenv("HUGGINGFACEHUB_API_TOKEN")
+    HF_KEY = os.getenv("HF_TOKEN")
     PWC_KEY = ""
     SEARCHAPI_API_KEY = ""
     TAVILY_API_KEY = ""
+    GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 AVAILABLE_LLMs = {  
     "prompt-llm": {
@@ -16,9 +17,8 @@ AVAILABLE_LLMs = {
         "model": "prompt-llama",
         "base_url": "http://localhost:8000/v1",
     },
-    "gpt-4.1": {"api_key": Configs.OPENAI_KEY, "model": "gpt-4.1"},
     "gpt-4": {"api_key": Configs.OPENAI_KEY, "model": "gpt-4o"},
-    "gpt-3.5": {"api_key": Configs.OPENAI_KEY, "model": "gpt-3.5-turbo"},
+    "gemini-flash": {"api_key": Configs.GEMINI_KEY, "model": "gemini-2.5-flash","provider": "google"},
 }
 
 TASK_METRICS = {

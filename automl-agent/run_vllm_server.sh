@@ -1,4 +1,6 @@
 #!/bin/bash
+# chmod +x run_vllm_server.sh
+# ./run_vllm_server.sh
 
 # .env 파일에서 HuggingFace 토큰 불러오기
 export HF_TOKEN=$(grep HF_TOKEN .env | cut -d '=' -f2)

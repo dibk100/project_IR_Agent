@@ -4,10 +4,10 @@ python_dateutil==2.9.0.post0
 setuptools==65.6.3
 
 # PyTorch ecosystem
-torch==2.3.0
-torchvision==0.18.0
-torchaudio==2.3.0
-torchtext==0.18.0  # torch 2.3.0 호환
+torch==2.2.1
+torchvision==0.17.1
+torchaudio==2.2.1
+torchtext==0.17.1  # torch 2.3.0 호환
 
 # ML / DL
 lightgbm==4.3.0

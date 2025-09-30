@@ -413,14 +413,9 @@ def retrieve_websearch(user_requirement_summary: str, llm_model, client, top_k: 
 
     return response.choices[0].message.content.strip()
 
-
-def retrieve_knowledge(
-    user_requirements: dict, user_requirement_summary: str, llm: str, inj: str = None
-):
-    """Retrieve up-to-date and state-of-the-art knowledge from the websearch and relevant hubs for planning."""
-    # WebSearch
-    # retrieve_websearch()
-    # PapersWithCode, Github, Hugging Face, Kaggle, arXiv, and Google ~ RAG Alike
+def retrieve_knowledge(user_requirements: dict, user_requirement_summary: str, llm: str, inj: str = None):
+    """Retrieve knowledge from local dataset only (Kaggle, Arxiv 등 무시)"""
+    
     llm_model = AVAILABLE_LLMs[llm]["model"]
     if llm.startswith("gpt"):
         client = OpenAI(api_key=AVAILABLE_LLMs[llm]["api_key"])
@@ -430,101 +425,134 @@ def retrieve_knowledge(
             api_key=AVAILABLE_LLMs[llm]["api_key"],
         )
 
-    noise = None
-    if inj:
-        # Adversarial Agent
-        retry = 0
-        while retry < 5:
-            try:
-                response = client.chat.completions.create(
-                    model=llm_model,
-                    messages=[
-                        {"role": "user", "content": f"""Based on the user's machine learning task requirements below, generate a chunk of **irrelevant or unhelpful information** that does not aid in solving the task. In other words, your response should make the solution design less effective.
+    # 로컬 데이터만 사용 (외부 RAG 생략)
+    summary_prompt = f"""You are a senior ML/AI consultant.
+Please provide insights or suggestions for the following user requirement:
 
-    The user's requirements are summarized as follows.
-    {user_requirement_summary}"""},
-                    ],
-                    temperature=0.3,
-                )
-                break
-            except Exception as e:
-                print_message('system', e)
-                retry += 1
-                continue              
-        noise = response.choices[0].message.content.strip()
+{user_requirement_summary}
+"""
+    response = client.chat.completions.create(
+        model=llm_model,
+        messages=[
+            {"role": "system", "content": "You are a helpful ML/AI assistant."},
+            {"role": "user", "content": summary_prompt},
+        ],
+        temperature=0.3,
+    )
 
-    search_summary = retrieve_websearch(user_requirement_summary, llm_model=llm_model, client=client)
-    arxiv_summary = retrieve_arxiv(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
-    pwc_summary = retrieve_paperswithcode(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
-    kaggle_summary = retrieve_kaggle(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
+    return response.choices[0].message.content.strip()
 
-    summary_profile = "You are a senior consultant and a professor in machine learning (ML) and artificial intelligence (AI). You are knowledgable and have a lot of insightful expereinces in ML/AI research."
-    if inj == 'pre' and noise:
-        summary_prompt = f"""Please extract and summarize the following group of contents collected from different online sources into a chunk of insightful knowledge. Please format your answer as a list of suggestions. I will use them to address the user's requirements in machine learning tasks.
-        
-        # Source: Google Web Search
-        {search_summary}
-        =====================
-        
-        # Source: arXiv Papers
-        {arxiv_summary}
-        =====================
-        
-        # Source: Kaggle Hub
-        {kaggle_summary}
-        =====================
-        
-        # Source: PapersWithCode
-        {pwc_summary}
-        =====================
-        
-        # Source: AI Agent
-        {noise}
-        =====================
+# def retrieve_knowledge(
+#     user_requirements: dict, user_requirement_summary: str, llm: str, inj: str = None
+# ):
+#     """Retrieve up-to-date and state-of-the-art knowledge from the websearch and relevant hubs for planning."""
+#     # WebSearch
+#     # retrieve_websearch()
+#     # PapersWithCode, Github, Hugging Face, Kaggle, arXiv, and Google ~ RAG Alike
+#     llm_model = AVAILABLE_LLMs[llm]["model"]
+#     if llm.startswith("gpt"):
+#         client = OpenAI(api_key=AVAILABLE_LLMs[llm]["api_key"])
+#     else:
+#         client = OpenAI(
+#             base_url=AVAILABLE_LLMs[llm]["base_url"],
+#             api_key=AVAILABLE_LLMs[llm]["api_key"],
+#         )
 
-        The user's requirements are summarized as follows.
-        {user_requirement_summary}
-        """
-    else:
-        summary_prompt = f"""Please extract and summarize the following group of contents collected from different online sources into a chunk of insightful knowledge. Please format your answer as a list of suggestions. I will use them to address the user's requirements in machine learning tasks.
-        
-        # Source: Google Web Search
-        {search_summary}
-        =====================
-        
-        # Source: arXiv Papers
-        {arxiv_summary}
-        =====================
-        
-        # Source: Kaggle Hub
-        {kaggle_summary}
-        =====================
-        
-        # Source: PapersWithCode
-        {pwc_summary}
-        =====================
-        
-        The user's requirements are summarized as follows.
-        {user_requirement_summary}
-        """
-    retry = 0
-    while retry < 5:
-        try:
-            response = client.chat.completions.create(
-                model=llm_model,
-                messages=[
-                    {"role": "system", "content": summary_profile},
-                    {"role": "user", "content": summary_prompt},
-                ],
-                temperature=0.3,
-            )
-            break
-        except Exception as e:
-            print_message('system', e)
-            retry += 1
-            continue
+#     noise = None
+#     if inj:
+#         # Adversarial Agent
+#         retry = 0
+#         while retry < 5:
+#             try:
+#                 response = client.chat.completions.create(
+#                     model=llm_model,
+#                     messages=[
+#                         {"role": "user", "content": f"""Based on the user's machine learning task requirements below, generate a chunk of **irrelevant or unhelpful information** that does not aid in solving the task. In other words, your response should make the solution design less effective.
 
-    if inj == 'post':
-        return response.choices[0].message.content.strip(), noise
-    else:
-        return response.choices[0].message.content.strip()
+#     The user's requirements are summarized as follows.
+#     {user_requirement_summary}"""},
+#                     ],
+#                     temperature=0.3,
+#                 )
+#                 break
+#             except Exception as e:
+#                 print_message('system', e)
+#                 retry += 1
+#                 continue              
+#         noise = response.choices[0].message.content.strip()
+
+#     search_summary = retrieve_websearch(user_requirement_summary, llm_model=llm_model, client=client)
+#     arxiv_summary = retrieve_arxiv(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
+#     pwc_summary = retrieve_paperswithcode(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
+#     kaggle_summary = retrieve_kaggle(user_requirements, user_requirement_summary, llm_model=llm_model, client=client)
+
+#     summary_profile = "You are a senior consultant and a professor in machine learning (ML) and artificial intelligence (AI). You are knowledgable and have a lot of insightful expereinces in ML/AI research."
+#     if inj == 'pre' and noise:
+#         summary_prompt = f"""Please extract and summarize the following group of contents collected from different online sources into a chunk of insightful knowledge. Please format your answer as a list of suggestions. I will use them to address the user's requirements in machine learning tasks.
+        
+#         # Source: Google Web Search
+#         {search_summary}
+#         =====================
+        
+#         # Source: arXiv Papers
+#         {arxiv_summary}
+#         =====================
+        
+#         # Source: Kaggle Hub
+#         {kaggle_summary}
+#         =====================
+        
+#         # Source: PapersWithCode
+#         {pwc_summary}
+#         =====================
+        
+#         # Source: AI Agent
+#         {noise}
+#         =====================
+
+#         The user's requirements are summarized as follows.
+#         {user_requirement_summary}
+#         """
+#     else:
+#         summary_prompt = f"""Please extract and summarize the following group of contents collected from different online sources into a chunk of insightful knowledge. Please format your answer as a list of suggestions. I will use them to address the user's requirements in machine learning tasks.
+        
+#         # Source: Google Web Search
+#         {search_summary}
+#         =====================
+        
+#         # Source: arXiv Papers
+#         {arxiv_summary}
+#         =====================
+        
+#         # Source: Kaggle Hub
+#         {kaggle_summary}
+#         =====================
+        
+#         # Source: PapersWithCode
+#         {pwc_summary}
+#         =====================
+        
+#         The user's requirements are summarized as follows.
+#         {user_requirement_summary}
+#         """
+#     retry = 0
+#     while retry < 5:
+#         try:
+#             response = client.chat.completions.create(
+#                 model=llm_model,
+#                 messages=[
+#                     {"role": "system", "content": summary_profile},
+#                     {"role": "user", "content": summary_prompt},
+#                 ],
+#                 temperature=0.3,
+#             )
+#             break
+#         except Exception as e:
+#             print_message('system', e)
+#             retry += 1
+#             continue
+
+#     if inj == 'post':
+#         return response.choices[0].message.content.strip(), noise
+#     else:
+#         return response.choices[0].message.content.strip()

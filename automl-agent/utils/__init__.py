@@ -2,8 +2,8 @@ import requests
 
 from bs4 import BeautifulSoup
 from urllib.parse import unquote
-from serpapi import GoogleSearch
-from kaggle.api.kaggle_api_extended import KaggleApi
+#from serpapi import GoogleSearch
+#from kaggle.api.kaggle_api_extended import KaggleApi
 
 from openai import OpenAI
 from configs import AVAILABLE_LLMs
@@ -21,12 +21,21 @@ class color:
     UNDERLINE = "\033[4m"
     END = "\033[0m"
 
-
 def get_kaggle():
-    api = KaggleApi()
-    api.authenticate()
-    return api
+    """Kaggle 사용 불가 모드: None 반환"""
+    print_message("system", "Kaggle API 호출을 건너뜁니다.")
+    return None
 
+
+def search_web(query):
+    """SerpAPI 미사용 시 빈 결과 반환"""
+    print_message("system", "Web search 호출을 건너뜁니다.")
+    return []
+
+# def get_kaggle():
+#     api = KaggleApi()
+#     api.authenticate()
+#     return api
 
 # def search_web(query):
 #     try:
@@ -74,16 +83,16 @@ def get_kaggle():
 #         "organic_results"
 #     ]
 
-def search_web(query):
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": "your api key",
-    }
+# def search_web(query):
+#     params = {
+#         "engine": "google",
+#         "q": query,
+#         "api_key": "your api key",
+#     }
 
-    search = GoogleSearch(params)
-    results = search.get_dict()
-    return results["organic_results"]
+#     search = GoogleSearch(params)
+#     results = search.get_dict()
+#     return results["organic_results"]
 
 
 def print_message(sender, msg, pid=None):

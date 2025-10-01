@@ -14,7 +14,7 @@ class Configs:
 AVAILABLE_LLMs = {  
     "prompt-llm": {
         "api_key": "empty",                 # # vLLM 서버는 api_key 필요 없음
-        "model": "prompt-llama",
+        "model": "mistral",
         "base_url": "http://localhost:8000/v1",
     },
     "gpt-4": {"api_key": Configs.OPENAI_KEY, "model": "gpt-4o"},

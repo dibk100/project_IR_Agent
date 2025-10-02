@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import gradio as gr
 
-# TODO: import other required library here, including libraries for datasets and (pre-trained) models like HuggingFace and Kaggle APIs. If the required module is not found, you can directly install it by running `pip install your_module`.
+# TODO: 기에 데이터셋 라이브러리와 HuggingFace 및 Kaggle API와 같은 (사전 학습된) 모델을 포함한 다른 필수 라이브러리를 가져옴. 필요한 모듈을 찾지 못하면 'pip install your_module'을 실행하여 직접 설치할 수 있음
 from torch.utils.data import DataLoader, Dataset
 from sklearn.metrics import accuracy_score, f1_score
 
@@ -24,7 +24,7 @@ np.random.seed(SEED)
 # Define device for model operations
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_PATH = "_experiments/datasets"  # path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparamter tuning, deployment, and evaluation
+DATASET_PATH = "_experiments/datasets"  # 전처리, 학습, 하이퍼파라미터 튜닝, 배포 및 평가를 위해 데이터셋(또는 사용자가 업로드한 데이터셋)을 저장하고 로드하는 경로
 
 # Data preprocessing and feature engineering
 def preprocess_data():

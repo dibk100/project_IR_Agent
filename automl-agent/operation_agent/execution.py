@@ -1,7 +1,9 @@
 import os
 import subprocess
 import selectors
-
+"""
+subprocess.Popen()을 사용해서 python -u {script_path} 명령을 진짜 로컬에서 실행함.
+"""
 def execute_script(script_name, work_dir = ".", device="0"):    
     if not os.path.exists(os.path.join(work_dir, script_name)):
         raise Exception(f"The file {script_name} does not exist.")

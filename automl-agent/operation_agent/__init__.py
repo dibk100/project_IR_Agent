@@ -66,6 +66,11 @@ class OperationAgent:
         return rcode, log
 
     def implement_solution(self, code_instructions, full_pipeline=True, code="", n_attempts=5):
+        """
+        실제 수행 : LLM과 실제 Python 실행(subprocess)을 연결하는 중심부
+        
+        """
+    
         print_message(
             self.agent_type,
             f"I am implementing the following instruction:\n\r{code_instructions}",
@@ -78,8 +83,11 @@ class OperationAgent:
         completion = None
         action_result = ""
         rcode = -1
+        
+        
         while iteration < n_attempts:
             try:
+                ##################### 1. 수행 프롬프트 : LLM에게 “이런 instruction대로 코드를 써봐” 요청
                 exec_prompt = """Carefully read the following instructions to write Python code for {} task.
                 {}
                 
@@ -114,23 +122,30 @@ class OperationAgent:
                 res = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )
+                ############################ 2. LLM이 Python 코드를 생성 ######################## 원하는 모양새로 나올까..
                 raw_completion = res.choices[0].message.content.strip()
                 completion = raw_completion.split("```python")[1].split("```")[0]
                 self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
 
+                ### ?????? 오류가 여기서 잡히나?
                 if not completion.strip(" \n"):
                     continue
-
+                
+                ############################# 3. 코드 저장
                 filename = f"{self.root_path}{self.code_path}.py"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, "wt") as file:
                     file.write(completion)
                 code = completion
+                
+                ############################## 4. 진짜 실행 ::: self_validation -> execute_script(얘가 수행됨)
                 rcode, log = self.self_validation(filename)
                 if rcode == 0:
                     action_result = log
                     break
+                
                 else:
+                    #### 실패
                     log = log
                     error_logs.append(log)
                     action_result = log

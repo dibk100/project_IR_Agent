@@ -10,7 +10,30 @@ from glob import glob
 
 
 def retrieve_datasets(user_requirements, data_path, client, model):
-    """Retrieve up-to-date and state-of-the-art knowledge from the websearch and relevant hubs for data manipulation and analysis."""
+    """
+    Retrieve up-to-date and state-of-the-art knowledge from the websearch and relevant hubs for data manipulation and analysis.
+    최신의, 최적화된 데이터셋을 웹 검색과 다양한 허브에서 가져와서 데이터 분석/처리에 사용할 수 있도록 준비하는 단계
+    
+    "자동 데이터 수집 및 준비 역할"
+    
+    - user_requirements : 사용자가 원하는 데이터셋과 관련 문제 정의 (예: 문제 유형, 데이터셋 이름, URL 등)
+    user_requirements.keys : "dataset","problem",etc
+    
+    data_path : 로컬 저장소 경로 (업로드된 데이터가 있으면 여기서 로드)
+    client : LLM 클라이언트 정보 (나중에 데이터 설명/전처리 생성 시 활용)
+    model : LLM 모델
+    
+    return : datasets
+    datasets = [
+        {
+            "name": "banana_quality",
+            "loader_key": "/home/.../banana_quality.csv",
+            "source": "user-upload"
+        },
+        ...
+    ]
+    
+    """
 
     # Return detailed sources and implementation for subsequent code generation
     # Internal: User Upload, User Link, and Data Hub

@@ -18,7 +18,7 @@ AVAILABLE_LLMs = {
         "base_url": "http://localhost:8000/v1",
     },
     "gpt-4": {"api_key": Configs.OPENAI_KEY, "model": "gpt-4o"},
-    "gemini-flash": {"api_key": Configs.GEMINI_KEY, "model": "gemini-2.5-flash","provider": "google"},
+    "gemini-flash": {"api_key": Configs.GEMINI_KEY, "model": "gemini-2.5-flash","provider": "google"},      #   "base_url": "https://api.generativeai.google/v1/models",  # 실제 엔드포인트 작성 필요
 }
 
 TASK_METRICS = {

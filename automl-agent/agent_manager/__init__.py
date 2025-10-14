@@ -12,33 +12,37 @@ from num2words import num2words
 from agent_manager.retriever import retrieve_knowledge
 from glob import glob
 
+# 기본 버전
 # agent_profile = """You are a helpful assistant."""
 
+# 역할 명시 버전: assistant
 # agent_profile = """You are a helpful assistant. You have two main responsibilities as follows.
 # 1. Receive requirements and/or inquiries from users through a well-structured JSON object.
 # 2. Using recent knowledge and state-of-the-art studies to devise promising high-quality plans for data scientists, machine learning research engineers, and MLOps engineers in your team to execute subsequent processes based on the user requirements you have received.
 # """
 
+#  AutoML 프로젝트의 시니어 PM 강조 버전 : 단순 도움을 넘어서 팀 내 데이터·모델·MLOps 담당자 관리
 # agent_profile = """You are a senior project manager of a automated machine learning project (AutoML). You have two main responsibilities as follows.
 # 1. Receive requirements and/or inquiries from users through a well-structured JSON object.
 # 2. Using recent knowledge and state-of-the-art studies to devise promising high-quality plans for data scientists, machine learning research engineers, and MLOps engineers in your team to execute subsequent processes based on the user requirements you have received.
 # """
 
+# 경험 강조 버전
 agent_profile = """You are an experienced senior project manager of a automated machine learning project (AutoML). You have two main responsibilities as follows.
 1. Receive requirements and/or inquiries from users through a well-structured JSON object.
 2. Using recent knowledge and state-of-the-art studies to devise promising high-quality plans for data scientists, machine learning research engineers, and MLOps engineers in your team to execute subsequent processes based on the user requirements you have received.
 """
-
+# 세계 최고 PM버전
 # agent_profile = """You are the world's best senior project manager of a automated machine learning project (AutoML). You have two main responsibilities as follows.
 # 1. Receive requirements and/or inquiries from users through a well-structured JSON object.
 # 2. Using recent knowledge and state-of-the-art studies to devise promising high-quality plans for data scientists, machine learning research engineers, and MLOps engineers in your team to execute subsequent processes based on the user requirements you have received.
 # """
 
-
-
+## json 형태로 ML 개발 계획을 작성하도록 지침
 json_plan = """Each of the following plans should cover the entire process of machine learning model development when applicable based on the given requirements, i.e., from problem formulation to deployment.
 Please ansewer your plans in list of the JSON object with `title` and `steps` keys."""
 
+# _is_relevant,_is_enough()에서 system prompt
 basic_profile = """You are a helpful, respectful and honest "human" assistant. Always answer as helpfully as possible, while being safe. Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.
 If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."""
 
@@ -61,31 +65,65 @@ possible_states = {
     "RES": "",
 }
 
+"""
+에이전트/시스템 상태 관리용 딕셔너리
+
+INIT: 초기 상태
+PLAN: 계획 수립
+ACT: 활동 단계
+PRE_EXEC: 실행 전 준비
+EXEC: 실행 중
+POST_EXEC: 실행 후
+REV: 검토
+RES: 결과
+"""
+
+# prompt Agent객체 생성 ::: manager객체 아님!
+# 사용자 자연어를 JSON으로 변환하는 역할
+# ./prompt_agent >> WizardLAMP 확인하기
 parser = PromptAgent()
 
-
 class AgentManager:
+    """
+    전체 워크플로우를 총괄하는 매니저 역할
+    - 사용자 요구사항을 바탕으로 계획(plan)을 관리
+    - 여러 에이전트(DataAgent, ModelAgent, OperationAgent)와 연계
+    - 계획 실행과 결과 수집
+    - 상태 관리, 재시도, 검증 등 전체 AutoML 파이프라인 조정
+    
+    함수 :
+    make_plans
+    execute_plan --> Data,Model Agent 실행
+    verify_solution
+    implement_solution
+    generate_reply
+    _is_relevant : ML/AI 관련 내용인지 판단하는 함수(llm-based)
+    _is_enough() : Auto<ML 수행에 충분한 정보를 포함하는지 판단하는 함수(llm-based)
+    
+    
+    """
+    
     def __init__(
         self,
-        task,
-        n_plans=3,
-        n_candidates=3,
-        n_revise=3,
+        task,                                           # task == downstream = 'tabular_classification'
+        n_plans=3,                                      # 생성할 계획
+        n_candidates=3,                                 # 계획 후보
+        n_revise=3,                                     # 수정 횟수
         device=0,
-        interactive=False,
+        interactive=False,                              # True면, 상태 전환 시 사용자 확인 허용
         llm="qwen",
-        user_requirements=None,
-        plans=None,
-        plan_knowledge=None,
-        data_path=None,
+        user_requirements=None,                         # user_requirements : json 형태 / 없다면 []로 반환됨
+        plans=None,                                     # plans: json 형태 / 없다면 []로 반환됨
+        plan_knowledge=None,                            # ""
+        data_path=None,                                 # 테스트할 때 작성 필요
         full_pipeline=True,
         rap=True,
         decomp=True,
         verification=True,
         result_path=None,
-        instruction_path=None,
+        instruction_path=None,                          # 코드 및 실행 지침 파일 경로(추측)
         exp_configs=None,
-        uid=None,
+        uid=None,                                           # 사용자/실험 ID?
         inj=None
     ):
         # Setup Agent Manager
@@ -97,15 +135,22 @@ class AgentManager:
         self.full_pipeline = full_pipeline
         self.llm = llm
         self.model = AVAILABLE_LLMs[llm]["model"]
-        self.chats = []
-        self.state = "INIT"
+        self.chats = []                                         # generate_reply() :: Agent가 유지 중인 전체 대화 기록 (대화 히스토리)
+        self.state = "INIT"                     # 초기 상태로 시작
+        
+        # Plan and Result
         if plans != None:
             f = open(plans)
             self.plans = json.load(f)
         else:
             self.plans = []
         self.action_results = []
+        
+        # AgentManager가 사용자와 상호작용(interactive) 모드인지 여부
+        # 한 번의 입력/출력으로 끝나는 것이 아니라, 여러 턴의 대화를 강제할 수 있음 : 자동화 파이프라인 중간중간에 사용자 확인/승인을 받을 수 있는 모드
         self.interactive = interactive  # enable the manager to ask user before proceeding to the next state (force multi-turn dialogue)
+        # ex : 계획 단계에서 LLM이 생성한 계획을 확인하고 사용자가 수정할 수 있음 
+        # 자동 모드(interactive=False)일 경우 → 자동으로 다음 상태 진행, 사용자 개입 없음
         if user_requirements != None:
             f = open(user_requirements)
             self.user_requirements = json.load(f)
@@ -124,6 +169,8 @@ class AgentManager:
             self.plan_knowledge = None
         self.data_path = data_path
         self.device = device
+        
+        # result_path 이전 결과가 있다면 로드, EXEC상태로 전환
         if result_path:
             plans = glob(result_path + "/*")
             for plan in plans:
@@ -146,8 +193,19 @@ class AgentManager:
         self.money = {}
 
     def make_plans(self, is_revision=False):
+        """
+        new plan 생성
+        사용자 요구사항(self.user_requirements) + 관련 지식(self.plan_knowledge)으로 여러 개의 end-to-actionable plan 생성
+        
+        is_revision
+        이전 계획이 실패했을 때, 실패 원인 분석 후 개선된 계획 생성
+        
+        instruction: Prompt Agent가 사용자 입력을 파싱하도록 안내
+        """
         # planning should include action_id, completion_status, action_dependencies (with required prior action ids), and
         # instruction (i.e., prompt to tell how Prompt Agent should parse user's input prompt (e.g., what keys should be included etc.)) for the repsective agent(s) responding to the given tasks
+        
+        ### 계획 수정
         if is_revision:
             start_time = time.time()
             fail_prompt = "I found that all the plans you provided are failed or unsatisfied with the given requirements. Now, your task is to find the reasons 'why' and 'how' the above plans were unsatisfied by carefully comparing them with the requirements again. Please answer me your findings and insights as we will use them to create the new set of plans."
@@ -178,9 +236,13 @@ class AgentManager:
         else:
             start_time = time.time()
             # retrieve relevant knowledge/expereince (from internal and external sources) for effective planning
-            if self.plan_knowledge == None and self.rap and self.inj in [None, 'pre']:
+            
+            ## 수정 False,
+            ### 새 계획 생성
+            if self.plan_knowledge == None and self.rap and self.inj in [None, 'pre']:      # 아직 계획을 위한 참조 지식이 없는 경우
                 self.plan_knowledge = retrieve_knowledge(self.user_requirements, self.req_summary, llm=self.llm, inj=self.inj)
             else:
+                # 추가 후처리(post_noise) :: retrieve_knowledge여기서 반환됨
                 self.plan_knowledge, self.post_noise = retrieve_knowledge(self.user_requirements, self.req_summary, llm=self.llm, inj=self.inj)
                 self.plan_knowledge = f""""{self.plan_knowledge}\r\nHere is a list of knowledge written by an AI agent for a relevant task:\r\n{self.post_noise}"""
 
@@ -204,6 +266,7 @@ class AgentManager:
             {plan_conditions}
             """
 
+        ### LLM호출 및 계획 생성
         start_time = time.time()
         for i in range(1, self.n_plans + 1):
             messages = [
@@ -225,9 +288,20 @@ class AgentManager:
         self.timer['planning'] = time.time() - start_time
 
     def execute_plan(self, plan):
+        """
+        단일 계획을 실제로 수행하는 역할
+        
+        1. Data Agent
+        2. Model Agent
+        
+        return ::
+        Dict(결과 str)
+        """
+        
         # langauge (text) based execution
-        pid = current_process()._identity[0]  # for checking the current plan
+        pid = current_process()._identity[0]  # for checking the current plan : 현재 실행 중인 프로세스 ID 가져옴(각 계획 실행 결과를 구분용)
 
+        ######### 1. Data Agent 실행 #########################
         start_time = time.time()
         # Data Agent generates the results after execute the given plan
         data_llama = DataAgent(
@@ -236,12 +310,16 @@ class AgentManager:
             rap=self.rap,
             decomp=self.decomp,
         )
-        data_result = data_llama.execute_plan(plan, self.data_path, pid)
+        data_result = data_llama.execute_plan(plan, self.data_path, pid)        
+        # # data_result(str) :
+        # # LLM이 생성한 실제 데이터 처리 단계 설명((문자열, 전처리·증강·특성 추출 단계 포함))
+        
         self.timer[f'data_execution_{pid}'] = time.time() - start_time
         self.money['Data'] = data_llama.money
 
-        # Model Agent summarizes the given plan for optimizing data relevant processes
-        # Model Agent generates the results after execute the given plan
+        ######### 2. Model Agent 실행 #########################
+        # Model Agent summarizes the given plan for optimizing data relevant processes : 모델 에이전트는 주어진 계획을 요약하여 데이터 관련 프로세스를 최적화
+        # Model Agent generates the results after execute the given plan : 모델 에이전트는 주어진 계획을 실행한 후 결과를 생성
         start_time = time.time()
         model_llama = ModelAgent(
             user_requirements=self.user_requirements,
@@ -250,14 +328,23 @@ class AgentManager:
             decomp=self.decomp,
         )
         model_result = model_llama.execute_plan(
-            k=self.n_candidates, project_plan=plan, data_result=data_result, pid=pid
+            k=self.n_candidates, project_plan=plan, data_result=data_result, pid=pid            # data_result :: Data Agent가 출력한 결과(str, 인사이트)기반 데이터 기반 모델링 진행
         )
+        
+        ## model_result 결과 타입 확인하기
         self.timer[f'model_execution_{pid}'] = time.time() - start_time
         self.money['Model'] = model_llama.money
         
         return {"data": data_result, "model": model_result}
 
     def verify_solution(self, solution):
+        """
+        
+        return ::
+        (str) pass or fail
+        """
+        
+        
         pid = current_process()._identity[0]  # for checking the current plan
         
         start_time = time.time()
@@ -265,6 +352,7 @@ class AgentManager:
         is_pass = False
 
         # pre-execution verification
+        # LLM에게 **솔루션이 사용자 요구사항을 만족하는지** 판단하도록 요청  
         verification_prompt = """Given the proposed solution and user's requirements, please carefully check and verify whether the proposed solution 'pass' or 'fail' the user's requirements.
         
         **Proposed Solution and Its Implementation**
@@ -277,7 +365,7 @@ class AgentManager:
         ```
                 
         Answer only 'Pass' or 'Fail'
-        """
+        """ 
 
         prompt = verification_prompt.format(
             solution["data"], solution["model"], self.user_requirements
@@ -287,6 +375,8 @@ class AgentManager:
             {"role": "user", "content": prompt},
         ]
 
+        
+        # res : 결과 메세지는 prompt에 의해 pass or fail
         while True:
             try:
                 res = get_client(self.llm).chat.completions.create(
@@ -294,9 +384,9 @@ class AgentManager:
                 )
                 break
             except Exception as e:
-                print_message("system", e)
+                print_message("system # Error Function :: Agent Manager verify_solution #", e)
                 continue
-        ans = res.choices[0].message.content.strip()
+        ans = res.choices[0].message.content.strip()                                       
         is_pass = "pass" in ans.lower()
         self.money['manager_execution_verification'] = res.usage.to_dict(mode='json')
         
@@ -305,6 +395,16 @@ class AgentManager:
         return is_pass
 
     def implement_solution(self, selected_solution):
+        """
+        ############ 실제로 python 코드를 수행하는 구간 :: ops_llama.implement_solution의 결과값 ops_result
+        Manager Agent가 선정된 계획/솔루션(selected_solution)을 가져오고, 코드 템플릿도 가져옴. OperationAgent에게 실제 실행을 맡기는 구조
+        selected_solution는 generate_replay로 생성됨
+        
+        prompt_pool/{self.task}.py : “OperationAgent가 실제로 코드를 삽입하고 실행할 틀(frame)”
+        code_path : 생성된 코드가 저장될 경로
+        code_instructions == selected_solution = Model/Data Agent가 만든 최종 솔루션의 지시문 (pseudo code나 step-by-step)
+        
+        """
         with open(f"prompt_pool/{self.task}.py") as file:
             template_code = file.read()        
         # code-based execution
@@ -326,21 +426,38 @@ class AgentManager:
         self,
         user_prompt,
         system_prompt=basic_profile,
-        return_content=False,
+        return_content=False,                       # True면 return 값이 llm순수 텍스트, False면 응답구조(메타데이터)
         system_use=False,
         caller_id=None
     ):
+        """
+        make_plan함수에서 계획수정(is_revision)할 때 활용
+        
+        AgentManager, DataAgent, ModelAgent 등 모든 에이전트들이 공통적으로 LLM에게 “질문 → 답변”을 요청할 때 사용하는 핵심 유틸 함수
+        LLM에게 질문하고, 답변을 받아, 대화 히스토리를 업데이트하는 역할
+        
+        주어진 프롬프트(user_prompt) + 시스템 프롬프트(system_prompt) -> LLM -> 응답(response)
+        
+        self.chats :  현재 Agent가 유지 중인 전체 대화 기록 (대화 히스토리) :: 리스트로 저장됨
+        
+        return ::
+        reply(str)   LLM이 생성한 응답구조(메타데이터)
+        """
         n_calls = 0
         self.chats.append({"role": "user", "content": user_prompt})
         messages = [{"role": "system", "content": system_prompt}]
 
+        ### 과거 대화 기록을 LLM input에 복원하는 것
+        # n_calls max_lenght == self.chats의 수
         for msg in self.chats:
-            if msg["role"] in ["function", "tool"]:
+            if msg["role"] in ["function", "tool"]:                 # role에 해당 역할이 있으면 : 이전 함수 호출 전의 문맥은 버리고, 최근 문맥만 유지(context length 절약용 트릭)
                 n_calls = n_calls + 1
             if n_calls > 0:
                 messages.append(msg)
             else:
                 messages.append({"role": msg["role"], "content": msg["content"]})
+                
+        ## LLM 호출 
         retry = 0
         response = None
         while retry < 5:
@@ -350,7 +467,7 @@ class AgentManager:
                 )
                 break
             except Exception as e:
-                print_message("system", e)
+                print_message("system :: Error Type :: Manager - generate_reply", e)
                 retry += 1
                 continue
         
@@ -358,15 +475,23 @@ class AgentManager:
             reply = response.choices[0].message.content.strip() if return_content else response
         else:
             reply = ''
+            print("generate_reply에서 5회 이상 시도 - 응답 없음(빈 값)")
         # add a new response message
+        ### 대화 기록 갱신
+        # system_use=False일 때만 대화 기록에 추가함
+        # "내부적인 LLM 호출" (ex. 데이터 검증용 등)은 기록하지 않음
         if not system_use and response:
             self.chats.append(dict(response.choices[0].message))
         
+        ## 비용 기록
         if caller_id and response:
             self.money[caller_id] = response.usage.to_dict(mode='json')
         return reply
 
     def _is_relevant(self, msg):
+        """
+        msg (문자열)이 "머신러닝(Machine Learning)" 또는 "인공지능(AI)" 과 관련된 내용인지 LLM에게 물어보고 판단하는 함수
+        """
         init_prompt = f"""Is the following statement relevant to machine learning or artificial intelligence?
         
         `{msg}`
@@ -391,6 +516,12 @@ class AgentManager:
         return "yes" in response.choices[0].message.content.strip().lower()
 
     def _is_enough(self, msg):
+        """
+        _is_relevant()보다 한 단계 “더 깊은 필터링 단계”에 해당 : "AutoML 파이프라인을 실제로 실행할 만큼 정보가 충분한가?"를 판단하는 역할
+        
+        """
+        
+        
         init_prompt = f"""
         Given the following JSON object representing the user's requirement for a potential ML or AI project, please tell me whether we have essential information (e.g., problem and dataset) to be used for a AutoML project?
         Please note that our users are not AI experts, you must focus only on the essential requirements, e.g., problem and brief dataset descriptions.
@@ -425,6 +556,11 @@ class AgentManager:
             return False, reason.strip()
 
     def _on_stop(self, msg):
+        """
+        대화 종료 트리거
+        사용자가 입력한 msg가 **대화 종료를 의도한 명령**인지 판별하는 역할
+        """
+        
         return msg.lower() in [
             "stop",
             "close",
@@ -437,15 +573,33 @@ class AgentManager:
             "bye",
             "goodbye",
         ]
-
+### Main Loop 함수
     def initiate_chat(self, prompt, plan_path=None, instruction_path=None):
+        """
+        [ 사용자의 요청 → 분석 → 계획 수립 → 실행 → 검증 → 수정 → 완료 ] 전 단계를 관리함.
+        self.state 값에 따라 동작이 바뀌며 단계를 실행함 : possible_states 참고
+        
+        INPUT parameters
+        - prompt: 사용자가 처음 입력한 요청 (ex: “MNIST 분류 모델 만들어줘”)
+        - plan_path: 계획 결과를 저장할 경로 (옵션)
+        - instruction_path: 코드 생성 지침을 저장할 경로 (옵션)
+        
+        Q. pool
+        Q. input() 는 어디서 나온거지?
+        
+        """
+        
         last_msg = prompt
-        pool = Pool(self.n_plans)
+        pool = Pool(self.n_plans)           # multiprocessing 파일에 정의되는 거 같은데 못찾음
         
         start_time = time.time() 
         init_time = time.time() # init time
+        
+        # last_msg, self.state로 루프 멈춤
         while not self._on_stop(last_msg) and self.state != "END":
-            # reply process: current state + current state description + response
+            
+            # 여기가 루프 도는 트리거 위치(state 상태, last_msg)
+            # reply process: current state + current state description + response : 응답 처리 과정: 현재 상태 + 현재 상태 설명 + 응답
             if last_msg == "":
                 sys_query = "Please give feedback or answer to proceed. You may type 'exit' to end the session."
                 last_msg = input(sys_query)
@@ -454,28 +608,45 @@ class AgentManager:
                 else:
                     prompt = last_msg
 
-            # talking with user here, keep appending message to messages with the oai format
+            ########### 1. INIT 단계 ###########
             if self.state == "INIT":
                 # display user's input prompt
                 self.chats.append({"role": "user", "content": prompt})
                 print_message("user", prompt)
-
-                # classify user's prompt into "chit-chat / simple query" vs. "ML/AI related request"
+                
+                """
+                1. _is_relevant : 요청이 AI/ML 관련인지 분류
+                1-1. “Yes” → 분석 계속
+                1-2. “No” → 그냥 대화(generate_reply)로 응답 후 종료
+                """
                 if self._is_relevant(prompt) or self.verification == False:
-                    # parsing user's prompt into JSON object
+                    ############# Request Vericication : 검증 단계(_is_relevant,_is_enough)
+                    """
+                    1-1-1. 요청을 JSON으로 파싱
+                    1-1-2. _is_enough() : 요청이 충분히 구체적인지 검사
+                    1-1-3. request_summary 만드는 단계
+                    state 바꾸고 루프 도는 위치로.
+                    """
+                    # 1-1-1. 요청을 JSON으로 파싱
                     if self.user_requirements == None:
+                        ######### parser.parse는 ./prompt_agent의 WizardLAMP에 의해?
                         self.user_requirements = parser.parse(prompt, return_json=True) # or parser.parse_openai(prompt, return_json=True)
                         # check user's requirement quality (JSON schema validation)
-                        self.timer['prompt_parsing'] = time.time() - start_time # end requestion verification step
-                        
+                        self.timer['prompt_parsing'] = time.time() - start_time 
+                
                         start_time = time.time()
+                        ########### 1-1-2. _is_enough() : 요청이 충분히 구체적인지 검사       
                         is_enough, reasons = self._is_enough(self.user_requirements)
                         self.timer['request_verification'] = time.time() - start_time
                     else:
+                        # user_requirements에 값을 넣으면 is_enough는 그냥 pass
                         is_enough = True
+                        
                     if 'confidence' in self.user_requirements.keys():
                         del self.user_requirements["confidence"]
-                                                    
+                    
+                    ########### 1-1-3. LLM이 JSON 내용을 한 문단으로 요약하는 단계(PLAN 단계 바로 전) :: request_summary
+                    #######      user_requirements가 이미 있음.
                     if is_enough or self.verification == False:
                         start_time = time.time()
                         messages = [
@@ -518,6 +689,7 @@ class AgentManager:
                                 self.state = "PLAN"
                         else:
                             self.state = "PLAN"
+                            # key_point : while문으로 돌아감(다음 단계 PLAN로)
                     else:
                         print_message(
                             self.agent_type,
@@ -525,11 +697,17 @@ class AgentManager:
                         )
                         last_msg = "" if self.interactive else "stop"
                 else:
-                    # chit-chat case
+                    # chit-chat case : 일반 대화로 전환 후 스톱
                     res = self.generate_reply(user_prompt=prompt, return_content=True, caller_id='manager_chitchat')
                     print_message(self.agent_type, res)
                     last_msg = "" if self.interactive else "stop"
+                    
+            ########### 2. PLAN 단계 ###########
             elif self.state == "PLAN":
+                """
+                make_plans() : 여러 계획(self.n_plans)을 생성    - ex. XGBoost 기반 파이프라인, CNN기반 딥러닝 파이프라인
+                * interactive 모드일 경우, 생성된 plan들을 user의 승인이 필요
+                """
                 start_time = time.time()
                 # Planning Stage
                 self.make_plans()
@@ -550,7 +728,8 @@ class AgentManager:
                         self.state = "ACT"
                 else:
                     self.state = "ACT"
-
+                    
+            ########### 3. ACT 단계 ########### 계획 실행 단계(계획구현하는거지 실제 실행은 아님)
             elif self.state == "ACT":
                 # Action (executing the plans) Stage
                 print_message(
@@ -558,6 +737,13 @@ class AgentManager:
                     "With the above plan(s), our 🦙 Data Agent and 🦙 Model Agent are going to find the best solution for you!",
                 )
                 start_time = time.time()
+                
+                """
+                각 plan은 내부적으로 Data Agent, Model Agent 호출.
+                # Data Agent : 데이터 준비/ 전처리 파이프라인 생성
+                # Model Agent : 델 탐색 / 학습 계획
+                self.action_results에 저장됨
+                """
                 # Parallelization
                 with Pool(self.n_plans) as pool:
                     self.action_results = pool.map(self.execute_plan, self.plans)
@@ -565,8 +751,15 @@ class AgentManager:
                 
                 self.state = "PRE_EXEC"
 
+            ############ 4. PRE_EXEC 단계 ########### 실행 결과 검증 단계
             elif self.state == "PRE_EXEC":
                 # Pre-(Code)Execution Verification stage
+                """
+                각 action_result(self.action_results)를 verify_solution()으로 검증.
+                통과한 plan만 pass=True 설정.
+                
+                5.EXEC 단계 or 7.REV 단계 결정
+                """
                 if self.verification:
                     print_message(
                         self.agent_type,
@@ -578,16 +771,19 @@ class AgentManager:
                     with Pool(self.n_plans) as pool:
                         verification_result = pool.map(self.verify_solution, self.action_results)
                     self.timer['execution_verification_total'] = time.time() - start_time
-
+                    
+                    # 하나라도 True인 계획이 있다면 ## 5. EXEC 단계로 넘어감
                     for i, result in enumerate(verification_result):
                         self.action_results[i]["pass"] = result
                         if result:
                             self.is_solution_found = True
 
                     if self.is_solution_found:
+                        ###################### 5. EXEC 단계
                         result_text = f"""Thanks to all the hard-working 🦙 Agents 🦙, we have found \033[4m{num2words(sum([result['pass'] for result in self.action_results]))}\033[0m suitable solution(s) for you 🥳.\nThen, let our Operation Agent 🦙 implement and evaluate these solutions 👨🏻‍💻!"""
                         self.state = "EXEC"
                     else:
+                        ###################### 7. REV 단계
                         result_text = f"""Despite all the hard work by 🦙 Agents 🦙, we have not found a suitable solution that matches your requirements yet 😭."""
                         self.state = "REV"
                 else:
@@ -610,8 +806,14 @@ class AgentManager:
                                 )
                 print_message(self.agent_type, result_text)
 
+            ############ 5. EXEC 단계 ########### Operation Agent에게 실제로 코드 수행
             elif self.state == "EXEC":
                 # Code Execution stage
+                """
+                1. summary_prompt : 여러 개획(plan) 중 통과(Ture)된 것만 모아서 요약
+                2. generate_reply : Operation Agent에게 지침 주는 프롬프트 문장 생성(직접 코드 작성 금지!) -> code_instruction 생성됨(코드 생성 지침문).
+                3. implementation_result : implement_solution함수 통해서 Operation Agent가 코드 작성(여기서 skeleton code활용해서 틀 채움)
+                """
                 if not self.code_instruction:
                     start_time = time.time()
                     
@@ -660,6 +862,8 @@ class AgentManager:
                             f.write(self.code_instruction)
 
                 start_time = time.time()
+                ### 위에서 code_instruction(코드 생성 지침문, 프롬프트)를 활용해서 실제 수행(코드 생성)
+                ### 실제 코드가 작성 및 생성됨 : implementation_result
                 self.implementation_result = self.implement_solution(self.code_instruction)
                 print_message('system', f'{self.code_path}, <<< END CODING, TIME USED: {time.time() - init_time} SECS >>>')
                 self.timer['implementation'] = time.time() - start_time
@@ -667,6 +871,7 @@ class AgentManager:
                 self.n_attempts += 1
                 self.state = "POST_EXEC"
 
+            ############ 6. POST_EXEC 단계 ########### 마지막
             elif self.state == "POST_EXEC":                
                 # Post-(Code)Execution Verification stage
                 if self.implementation_result["rcode"] == 0:

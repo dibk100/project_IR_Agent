@@ -414,7 +414,17 @@ def retrieve_websearch(user_requirement_summary: str, llm_model, client, top_k: 
     return response.choices[0].message.content.strip()
 
 def retrieve_knowledge(user_requirements: dict, user_requirement_summary: str, llm: str, inj: str = None):
-    """Retrieve knowledge from local dataset only (Kaggle, Arxiv 등 무시)"""
+    """
+    ### LLM 기반 지식 검색기 #####
+    Retrieve knowledge from local dataset only (Kaggle, Arxiv 등 무시)
+
+    Agent Manager의 make_plans(function)에서 LLM이 계획을 만들 때 참고할 자료를 생성하는 역할
+    -->  사용자의 요구사항(user_requirements)을 바탕으로 참조 지식(knowledge) 검색
+    
+    user_requirement_summary :: 이 파라미터가 중요한 것 같음
+    client는 retrieve_knowledge 함수에서 LLM에게 프롬프트를 보내고 응답을 받는 역할(참조 지식(plan_knowledge)을 얻기 위해 사용하는 LLM 통신용 객체)
+    
+    """
     
     llm_model = AVAILABLE_LLMs[llm]["model"]
     if llm.startswith("gpt"):
@@ -425,7 +435,7 @@ def retrieve_knowledge(user_requirements: dict, user_requirement_summary: str, l
             api_key=AVAILABLE_LLMs[llm]["api_key"],
         )
 
-    # 로컬 데이터만 사용 (외부 RAG 생략)
+    # LLM에게 관련 지식, 통찰, 제안을 생성하도록 요청
     summary_prompt = f"""You are a senior ML/AI consultant.
 Please provide insights or suggestions for the following user requirement:
 
@@ -440,6 +450,9 @@ Please provide insights or suggestions for the following user requirement:
         temperature=0.3,
     )
 
+    # 확인용
+    # print("retrieve_knowledge함수의 llm 답변(통찰, 제안, 참고 지식, 실행 아이디어) : ",response.choices[0].message.content.strip())
+    
     return response.choices[0].message.content.strip()
 
 # def retrieve_knowledge(

@@ -471,41 +471,19 @@ class AgentManager:
             else:
                 messages.append({"role": msg["role"], "content": msg["content"]})
         
-            # 여기서부터 수정함
-            last_role = "system"  # 마지막으로 append된 메시지의 role, system 이후 user/assistant 번갈아 유지용
-
-            for msg in self.chats:
-                role = msg["role"]
-                
-                # role에 해당 역할이 있으면 : 이전 함수 호출 전의 문맥은 버리고, 최근 문맥만 유지(context length 절약용 트릭)
-                if msg["role"] in ["function", "tool"]:                
-                    n_calls = n_calls + 1
-                    continue
-                
-                if n_calls > 0:
-                    # 역할 순서 체크: user/assistant 번갈아 가도록
-                    if last_role == role:
-                        # 동일 역할 연속이면 assistant/user로 바꿔서 append
-                        corrected_role = "assistant" if role == "user" else "user"
-                        messages.append({"role": corrected_role, "content": msg["content"]})
-                        last_role = corrected_role
-                    else:
-                        messages.append({"role": role, "content": msg["content"]})
-                        last_role = role
-                else:
-                    # function/tool 호출 전 메시지는 그대로 append
-                    messages.append({"role": role, "content": msg["content"]})
-                    last_role = role
-        
-        
-        
         """
         n_calls = 0
         self.chats.append({"role": "user", "content": user_prompt})
         messages = [{"role": "system", "content": system_prompt}]
+        
+        for msg in self.chats:
+            if msg["role"] in ["function", "tool"]:                 
+                n_calls = n_calls + 1
+            if n_calls > 0:
+                messages.append(msg)
+            else:
+                messages.append({"role": msg["role"], "content": msg["content"]})
 
-
-                
         ## LLM 호출 
         retry = 0
         response = None

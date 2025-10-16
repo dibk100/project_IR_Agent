@@ -1,6 +1,37 @@
 # Log
 sketch
 
+## 📁 Folder Structure
+```
+project/
+├── automl-agent/
+│   ├── agent_manager/
+│   │   ├── __init__.py
+│   │   └── retriever.py
+│   ├── data_agent/
+│   │   ├── __init__.py
+│   │   └── retriever.py
+│   ├── model_agent/
+│   │   ├── __init__.py
+│   │   └── retriever.py
+│   ├── operation_agent/
+│   │   ├── __init__.py
+│   │   └── execution.py
+│   ├── prompt_agent/
+│   │   ├── __init__.py
+│   │   ├── WizardLAMP/
+│   │   └── schema.json
+│   ├── prompt_pool/
+│   │   ├── __init__.py
+│   │   └── tabular_classification.py
+│   ├── configs.py
+│   └── AutoMLAgent.ipynb
+
+└── requirements.txt
+
+```
+
+
 ### 🚀 구현 / 진행 상황
 - [YYYY-MM-DD] 환경 세팅 완료
 - [YYYY-MM-DD] 논문 알고리즘 재현 시작

@@ -48,8 +48,9 @@ def retrieve_datasets(user_requirements, data_path, client, model):
         ## 실험을 위해 수정함
         datasets.append({
                     "name": data["name"],
-                    "loader_key": data_path,
+                    "loader_key": 'local',
                     "source": "user-upload",                                                          ###
+                    "data_path" : data_path
                 })
         
         # if data.get("source", "user-upload") in ["user-upload", "upload"]:

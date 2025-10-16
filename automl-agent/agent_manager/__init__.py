@@ -116,7 +116,7 @@ class AgentManager:
         llm="qwen",
         user_requirements=None,                         # user_requirements : json 형태 / 없다면 []로 반환됨
         plans=None,                                     # plans: json 형태 / 없다면 []로 반환됨 
-        plan_knowledge=None,                                 # './example_plans/plan_knowledge.md',   
+        plan_knowledge='./example_plans/plan_knowledge.md',                                 # './example_plans/plan_knowledge.md',   
         data_path=None,                                 # 테스트할 때 작성 필요
         full_pipeline=True,
         rap=True,
@@ -319,7 +319,12 @@ class AgentManager:
             rap=self.rap,
             decomp=self.decomp,
         )
+        ############## 실험을 위한
+        add_prompt = "\n\n **Important Instruction: All data loading must strictly use the absolute path specified. Do not attempt relative paths or alternative locations.**\n**Be careful not to import from incorrect modules. Do not import from non-existent paths.**\n\n"
+        
         data_result = data_llama.execute_plan(plan, self.data_path, pid)      
+        data_result +=add_prompt
+
         print(f"################# 3. ACT 단계(Data Agent모델 수행) execute_plan - 결과 : \n{data_result}\n################# Data Agent모델 data_result END ########\n")  
         # # data_result(str) :
         # # LLM이 생성한 실제 데이터 처리 단계 설명((문자열, 전처리·증강·특성 추출 단계 포함))
@@ -441,8 +446,6 @@ class AgentManager:
         caller_id=None
     ):
         """
-        
-        
         AgentManager, DataAgent, ModelAgent 등 모든 에이전트들이 공통적으로 LLM에게 “질문 → 답변”을 요청할 때 사용하는 핵심 유틸 함수
         LLM에게 질문하고, 답변을 받아, 대화 히스토리를 업데이트하는 역할
         
@@ -458,32 +461,25 @@ class AgentManager:
         ### 과거 대화 기록을 LLM input에 복원하는 것
         # n_calls max_lenght == self.chats의 수
         
-        기존 코드에서 오류 BadRequestError 발생 :
-        - system 메세지 뒤에 user → user순으로 들어가면 OpenAI Chat API 오류 발생하는 것 같음
-        - ["function", "tool"] 이거 때문에 순서가 꼬인건가
-        
-        기존 코드
-        for msg in self.chats:
-            if msg["role"] in ["function", "tool"]:                 
-                n_calls = n_calls + 1
-            if n_calls > 0:
-                messages.append(msg)
-            else:
-                messages.append({"role": msg["role"], "content": msg["content"]})
-        
         """
         n_calls = 0
         self.chats.append({"role": "user", "content": user_prompt})
         messages = [{"role": "system", "content": system_prompt}]
         
+        test_trriger = False
         for msg in self.chats:
+            
             if msg["role"] in ["function", "tool"]:                 
+                print(f"@@@@@@@@@@@@@@@ 챗 확인하기 :\n {msg}\n@@@@@@@@@@@@@@@@@@@@\n")
+                test_trriger = True
                 n_calls = n_calls + 1
             if n_calls > 0:
                 messages.append(msg)
             else:
-                messages.append({"role": msg["role"], "content": msg["content"]})
-
+                messages.append({"role": msg["role"], "content": msg["content"]})   
+        
+        if test_trriger :
+            raise SystemExit("⛔ generate_reply 중단: LLM 호출 직전에서 종료됨")
         ## LLM 호출 
         retry = 0
         response = None

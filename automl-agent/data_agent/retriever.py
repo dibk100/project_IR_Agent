@@ -39,108 +39,116 @@ def retrieve_datasets(user_requirements, data_path, client, model):
     # Internal: User Upload, User Link, and Data Hub
     # External: OpenML, UCI ML Dataset Archive, Hugging Face, Torch DataHub, Tensorflow DataHub, and Kaggle Dataset
     datasets = []
-
-    for data in user_requirements["dataset"]:
+    
+    for data in user_requirements["problem"]["dataset"]:                                               ### 수정함 : original : user_requirements["dataset"]
         data["task"] = user_requirements["problem"]["downstream_task"]
         data["llm_client"] = client
         data["llm_model"] = model
-        if data.get("source", "user-upload") in ["user-upload", "upload"]:
-            # get upload files from storage
-            loader_key = True
-            datasets.append(
-                {
+        
+        ## 실험을 위해 수정함
+        datasets.append({
                     "name": data["name"],
                     "loader_key": data_path,
-                    "source": "user-upload",
-                }
-            )
-            continue
-        elif data.get("source", "user-upload") == "user-link":
-            # download file from the given link
-            data["url"] = re.search(
-                "(?P<url>https?://[^\s]+)", str(user_requirements["dataset"])
-            ).group("url")
-            loader_key = retrieve_download(**data)
-            datasets.append(
-                {
-                    "name": data["name"],
-                    "loader_key": loader_key,
-                    "source": "user-link",
-                }
-            )
-            continue
-        elif data.get("source", "user-upload") == "direct-search":
-            # search using name in data loaders
-            loader_key = retrieve_huggingface(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "loader_key": loader_key,
-                        "source": "huggingface-hub",
-                    }
-                )
-                continue
+                    "source": "user-upload",                                                          ###
+                })
+        
+        # if data.get("source", "user-upload") in ["user-upload", "upload"]:
+        #     # get upload files from storage
+        #     loader_key = True
+        #     datasets.append(
+        #         {
+        #             "name": data["name"],
+        #             "loader_key": data_path,
+        #             "source": "user-upload",
+        #         }
+        #     )
+        #     continue
+        # elif data.get("source", "user-upload") == "user-link":
+        #     # download file from the given link
+        #     data["url"] = re.search(
+        #         "(?P<url>https?://[^\s]+)", str(user_requirements["dataset"])
+        #     ).group("url")
+        #     loader_key = retrieve_download(**data)
+        #     datasets.append(
+        #         {
+        #             "name": data["name"],
+        #             "loader_key": loader_key,
+        #             "source": "user-link",
+        #         }
+        #     )
+        #     continue
+        # elif data.get("source", "user-upload") == "direct-search":                      
+        #     # search using name in data loaders
+        #     loader_key = retrieve_huggingface(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "loader_key": loader_key,
+        #                 "source": "huggingface-hub",
+        #             }
+        #         )
+        #         continue
 
-            loader_key = retrieve_kaggle(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "loader_key": loader_key,
-                        "source": "kaggle-hub",
-                    }
-                )
-                continue
+        #     loader_key = retrieve_kaggle(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "loader_key": loader_key,
+        #                 "source": "kaggle-hub",
+        #             }
+        #         )
+        #         continue
 
-            loader_key, hub_name = retrieve_pytorch(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "loader_key": loader_key,
-                        "source": hub_name,
-                    }
-                )
-                continue
+        #     loader_key, hub_name = retrieve_pytorch(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "loader_key": loader_key,
+        #                 "source": hub_name,
+        #             }
+        #         )
+        #         continue
 
-            loader_key = retrieve_tensorflow(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "loader_key": loader_key,
-                        "source": "tensorflow-datasets",
-                    }
-                )
-                continue
+        #     loader_key = retrieve_tensorflow(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "loader_key": loader_key,
+        #                 "source": "tensorflow-datasets",
+        #             }
+        #         )
+        #         continue
 
-            loader_key = retrieve_uci(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "source": "ucimlrepo",
-                    }
-                )
-                continue
+        #     loader_key = retrieve_uci(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "source": "ucimlrepo",
+        #             }
+        #         )
+        #         continue
 
-            loader_key = retrieve_openml(**data)
-            if loader_key:
-                datasets.append({"name": data["name"], "source": "openml"})
-                continue
+        #     loader_key = retrieve_openml(**data)
+        #     if loader_key:
+        #         datasets.append({"name": data["name"], "source": "openml"})
+        #         continue
               
-        else:
-            loader_key = retrieve_infer(**data)
-            if loader_key:
-                datasets.append(
-                    {
-                        "name": data["name"],
-                        "loader_key": loader_key,
-                        "source": "infer-search",
-                    }
-                )
-                continue
+        # else:
+        #     loader_key = retrieve_infer(**data)
+        #     if loader_key:
+        #         datasets.append(
+        #             {
+        #                 "name": data["name"],
+        #                 "loader_key": loader_key,
+        #                 "source": "infer-search",
+        #             }
+        #         )
+        #         continue
     return datasets
 
 

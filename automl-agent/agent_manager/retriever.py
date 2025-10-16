@@ -415,7 +415,7 @@ def retrieve_websearch(user_requirement_summary: str, llm_model, client, top_k: 
 
 def retrieve_knowledge(user_requirements: dict, user_requirement_summary: str, llm: str, inj: str = None):
     """
-    ### LLM 기반 지식 검색기 #####
+    ### LLM 기반 지식 검색기 ver1 #####
     Retrieve knowledge from local dataset only (Kaggle, Arxiv 등 무시)
 
     Agent Manager의 make_plans(function)에서 LLM이 계획을 만들 때 참고할 자료를 생성하는 역할

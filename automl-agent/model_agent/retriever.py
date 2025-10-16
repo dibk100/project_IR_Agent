@@ -12,40 +12,57 @@ def retrieve_models(user_requirements):
 
     # Return detailed sources and implementation for subsequent code generation
     models = []
+    
+    ############# 여기서부터는 실험을 위해 수정함
+    datasets = user_requirements["problem"].get("dataset", [])
+    
+    for model in user_requirements["problem"].get("model", []):     # model.keys() :: name, family, type
+        # dataset modality 합치기
+        modalities = []
+        for dataset in datasets:
+            modalities += dataset.get("modality", [])
+        model["modality"] = list(set(modalities))  # 중복 제거
 
-    for model in user_requirements["model"]:
-        # find match with reducing priority
-        model["modality"] = []
-        for dataset in user_requirements["dataset"]:
-            model["modality"] += dataset["modality"]
-        model["modality"] = set(model["modality"])
+        # 로컬 실험용: 모델 정보만 추가
+        models.append({
+            "name": model["name"],
+            "model": None,                                          # 원래는 retrieve_ 함수 사용해서 모델 찾아야함
+            "source": "local"
+        })
 
-        found_model = retrieve_huggingface(**model)
-        # found_model = "exist in source" if found_model else found_model
-        if found_model:
-            models.append(
-                {
-                    "name": model["name"],
-                    "model": found_model,
-                    "source": "huggingface-hub",
-                }
-            )
-            continue
+    # for model in user_requirements["model"]:
+    #     # find match with reducing priority
+    #     model["modality"] = []
+    #     for dataset in user_requirements["dataset"]:
+    #         model["modality"] += dataset["modality"]
+    #     model["modality"] = set(model["modality"])
+        
+    #     found_model = retrieve_huggingface(**model)
+    #     # found_model = "exist in source" if found_model else found_model
+    #     if found_model:
+    #         models.append(
+    #             {
+    #                 "name": model["name"],
+    #                 "model": found_model,
+    #                 "source": "huggingface-hub",
+    #             }
+    #         )
+    #         continue
 
-        found_model = retrieve_kaggle(**model)
-        # formerly, tensorflow hub
-        if found_model:
-            models.append(
-                {"name": model["name"], "model": found_model, "source": "kaggle-hub"}
-            )
-            continue
+    #     found_model = retrieve_kaggle(**model)
+    #     # formerly, tensorflow hub
+    #     if found_model:
+    #         models.append(
+    #             {"name": model["name"], "model": found_model, "source": "kaggle-hub"}
+    #         )
+    #         continue
 
-        found_model, hub_name = retrieve_pytorch(**model)
-        if found_model:
-            models.append(
-                {"name": model["name"], "model": found_model, "source": hub_name}
-            )
-            continue
+    #     found_model, hub_name = retrieve_pytorch(**model)
+    #     if found_model:
+    #         models.append(
+    #             {"name": model["name"], "model": found_model, "source": hub_name}
+    #         )
+    #         continue
 
     return models
 

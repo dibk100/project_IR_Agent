@@ -8,6 +8,6 @@
 - 경량 SLLM과 시스템 설계(프롬프트/평가/메모리/협업 구조 등)를 결합하여 비용 효율적이고 실전 적용 가능한 에이전트 성능을 목표로 함.
 
 ## 📚 논문 구현 / 진행 상황
-- [AgentVerse](https://github.com/dibk100/paper_agentverse)
-- [LightAgent](https://github.com/dibk100/paper_LightAgent)
-- AutoML-Agent : 현재 repo에서 실험 진행 중
+- [AgentVerse (ICLR 2023)](https://github.com/dibk100/paper_agentverse)
+- [LightAgent (preprint 2025-09-10)](https://github.com/dibk100/paper_LightAgent)
+- AutoML-Agent (ICML 2025) : 현재 repo에서 실험 진행 중

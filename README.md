@@ -1,69 +1,13 @@
-# Log
-sketch
+# project_IR_Agent 🚀
+- **Type**: 개인 연구 프로젝트 (Independent Research)
+- **Subject**: OpenSourec LLM 기반 자율 에이전트 시스템 연구
+- **Focus**: AgentVerse, AutoML-Agent, LightAgent 논문 구현 및 확장형 sLLM(opensourec) 기반 지능형 Agent 구조 설계
 
-## 📁 Folder Structure
-```
-project/
-├── automl-agent/
-│   ├── agent_manager/
-│   │   ├── __init__.py
-│   │   └── retriever.py
-│   ├── data_agent/
-│   │   ├── __init__.py
-│   │   └── retriever.py
-│   ├── model_agent/
-│   │   ├── __init__.py
-│   │   └── retriever.py
-│   ├── operation_agent/
-│   │   ├── __init__.py
-│   │   └── execution.py
-│   ├── prompt_agent/
-│   │   ├── __init__.py
-│   │   ├── WizardLAMP/
-│   │   └── schema.json
-│   ├── prompt_pool/
-│   │   ├── __init__.py
-│   │   └── tabular_classification.py
-│   ├── configs.py
-│   └── AutoMLAgent.ipynb
+## Goal
+- 오픈소스 모델 기반으로, 상용 API 모델(gpt,claude,etc) 수준의 성능을 끌어내기 위한 전략 및 설계 수립.
+- 경량 SLLM과 시스템 설계(프롬프트/평가/메모리/협업 구조 등)를 결합하여 비용 효율적이고 실전 적용 가능한 에이전트 성능을 목표로 함.
 
-└── requirements.txt
-
-```
-
-
-### 🚀 구현 / 진행 상황
-- [YYYY-MM-DD] 환경 세팅 완료
-- [YYYY-MM-DD] 논문 알고리즘 재현 시작
-- [YYYY-MM-DD] 데이터셋 준비 완료 / 실험 1 완료
-
-### 💽 Error 기록
-<details>
-<summary>Error : pip install -r requirements.txt</summary>
-
-### 오류 상황
-```
-Downloading nvidia_cublas_cu12-12.1.3.1-py3-none-manylinux1_x86_64.whl (410.6 MB) ━━━━━━━━━━━━━━━━━━━╺━━━━━━━━━━━━━━━━━━━━ 197.4/410.6 MB 41.0 MB/s eta 0:00:06
-ERROR: Could not install packages due to an OSError: 
-[Errno 28] No space left on device ━━━━━━━━━━━━━━━━━━━╸━━━━━━━━━━━━━━━━━━━━ 200.5/410.6 MB 40.9 MB/s eta 0:00:06
-```
-### 분석
-- 오류: 디스크 공간 부족 (OSError: [Errno 28] No space left on device)
-- 원인: 설치하려는 패키지(nvidia_cublas_cu12)가 약 410MB로, 설치 디렉토리에 남은 공간이 부족
-- 상세: pip는 wheel 패키지를 임시 디렉토리에 풀어서 설치하는데, 이 임시 디렉토리 공간이 부족하면 설치 실패
-
-### 해결 방법
-```
-# pip 캐시 비우기
-pip cache purge
-
-# 임시 디렉토리 생성
-mkdir -p ~/tmp
-export TMPDIR=~/tmp
-
-# 다시 설치
-pip install -r requirements.txt
-```
-⚠️ 참고: TMPDIR을 임시 디렉토리로 지정하면 pip가 패키지를 풀 때 이 디렉토리를 사용하므로 디스크 부족 문제를 회피할 수 있음
-
-</details>
+## 📚 논문 구현 / 진행 상황
+- [AgentVerse](https://github.com/dibk100/paper_agentverse)
+- [LightAgent](https://github.com/dibk100/paper_LightAgent)
+- AutoML-Agent : 현재 repo에서 실험 진행 중

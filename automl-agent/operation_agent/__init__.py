@@ -56,7 +56,7 @@ class OperationAgent:
         self.model = AVAILABLE_LLMs[llm]["model"]
         self.experiment_logs = []
         self.user_requirements = user_requirements
-        self.root_path = "./agent_workspace/exp" # + f"{code_path}"
+        self.root_path = "./agent_workspace" # + f"{code_path}"
         self.code_path = code_path
         self.device = device
         self.money = {}

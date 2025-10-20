@@ -102,7 +102,6 @@ class AgentManager:
     _is_relevant : ML/AI 관련 내용인지 판단하는 함수(llm-based)
     _is_enough() : Auto<ML 수행에 충분한 정보를 포함하는지 판단하는 함수(llm-based)
     
-    
     """
     
     def __init__(
@@ -320,7 +319,7 @@ class AgentManager:
             decomp=self.decomp,
         )
         ############## 실험을 위한
-        add_prompt = "\n\n **Important Instruction: All data loading must strictly use the absolute path specified. Do not attempt relative paths or alternative locations.**\n**Be careful not to import from incorrect modules. Do not import from non-existent paths.**\n\n"
+        add_prompt = "\n\n **Important Instruction: All data loading must strictly use the absolute path specified. Do not attempt relative paths or alternative locations.**\n\n"
         
         data_result = data_llama.execute_plan(plan, self.data_path, pid)      
         data_result +=add_prompt

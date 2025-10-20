@@ -19,6 +19,7 @@ AVAILABLE_LLMs = {
     },
     "gpt-4": {"api_key": Configs.OPENAI_KEY, "model": "gpt-4o"},
     "gemini-flash": {"api_key": Configs.GEMINI_KEY, "model": "gemini-2.5-flash","provider": "google"},      #   "base_url": "https://api.generativeai.google/v1/models",  # 실제 엔드포인트 작성 필요
+    "starcoder2":{"api_key":Configs.HF_KEY,"model":"bigcode/starcoder2-3b"}
 }
 
 TASK_METRICS = {

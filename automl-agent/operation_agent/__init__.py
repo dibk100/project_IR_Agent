@@ -37,16 +37,26 @@ from operation_agent.execution import execute_script
 # 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
 # """
 
-agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for production-level deployment, given any datasets and models. You have the following main responsibilities to complete.
+# full pipeline
+# agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for production-level deployment, given any datasets and models. You have the following main responsibilities to complete.
+# 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
+# 2. Write effective Python codes to preprocess the retrieved dataset.
+# 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
+# 4. Write efficient Python codes to train/finetune the retrieved model.
+# 5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
+# 6. Write Python codes to build the web application demo using the Gradio library.
+# 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
+# """
+
+# test용
+agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for model training and saving, given any datasets and models. You have the following main responsibilities to complete.
 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
 2. Write effective Python codes to preprocess the retrieved dataset.
 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
 4. Write efficient Python codes to train/finetune the retrieved model.
-5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
-6. Write Python codes to build the web application demo using the Gradio library.
-7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
+5. Write suitable Python codes to save the trained model to the appropriate directory.
+6. Run the model evaluation using the given Python functions and summarize the results for validation against the user's requirements.
 """
-
 
 class OperationAgent:
     def __init__(self, user_requirements, llm, code_path, device=0):
@@ -56,19 +66,22 @@ class OperationAgent:
         self.model = AVAILABLE_LLMs[llm]["model"]
         self.experiment_logs = []
         self.user_requirements = user_requirements
-        self.root_path = "./agent_workspace" # + f"{code_path}"
+        self.root_path = "agent_workspace" # + f"{code_path}"
         self.code_path = code_path
         self.device = device
         self.money = {}
 
     def self_validation(self, filename):
+        """
+        생성한 코드를 확인
+        """
         rcode, log = execute_script(filename, device=self.device)
         return rcode, log
 
-    def implement_solution(self, code_instructions, full_pipeline=True, code="", n_attempts=5):
+    def implement_solution(self, code_instructions, full_pipeline=False, code="", n_attempts=5):
         """
         실제 수행 : LLM과 실제 Python 실행(subprocess)을 연결하는 중심부
-        
+        ## full_pipeline : False :: 모델링 파이프라인 (데이터 가져오기부터 모델 저장까지)
         """
     
         print_message(
@@ -110,7 +123,7 @@ class OperationAgent:
                 exec_prompt = exec_prompt.format(
                     self.user_requirements["problem"]["downstream_task"],
                     code_instructions,
-                    code,
+                    code,                                   # 초기 코드 or 잘못 작성되었던 코드
                     log,
                     pipeline,
                 )
@@ -129,14 +142,16 @@ class OperationAgent:
 
                 ### ?????? 오류가 여기서 잡히나?
                 if not completion.strip(" \n"):
+                    print("### ?????? 오류가 여기서 잡히나?")
                     continue
                 
                 ############################# 3. 코드 저장
-                filename = f"{self.root_path}{self.code_path}.py"
+                filename = f"{self.root_path}{self.code_path}_{iteration}.py"
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, "wt") as file:
                     file.write(completion)
-                code = completion
+                code = completion                       ## 생성된 코드 입력될텐데?
+                #print(">>>>>>>>>>>>>> 확인용 :\n",code)
                 
                 ############################## 4. 진짜 실행 ::: self_validation -> execute_script(얘가 수행됨)
                 rcode, log = self.self_validation(filename)
@@ -151,7 +166,7 @@ class OperationAgent:
                     action_result = log
                     print_message(self.agent_type, f"I got this error (itr #{iteration}): {log}")
                     iteration += 1                    
-                    # break
+                    # while문
             except Exception as e:
                 iteration += 1
                 print_message(self.agent_type, f"===== Retry: {iteration} =====")

@@ -13,6 +13,7 @@ from agent_manager.retriever import retrieve_knowledge
 from glob import glob
 
 from experiments import FREE_PROMPTS
+from utils.switch_model import switch_model
 
 # 기본 버전
 # agent_profile = """You are a helpful assistant."""
@@ -193,6 +194,16 @@ class AgentManager:
         self.inj = inj
         self.timer = {}
         self.money = {}
+        
+        self.current_vllm_model = "mistral"                 # 수정
+        
+    def switch_vllm_model(self, target_model: str):
+        """현재 vLLM 모델이 target_model과 다르면 전환"""
+        if self.current_vllm_model != target_model:
+            print(f"[AgentManager] 🔄 Switching vLLM model: {self.current_vllm_model} → {target_model}")
+            switch_model(target_model)
+            self.current_vllm_model = target_model
+            time.sleep(5)  # 서버 안정화 대기
 
     def make_plans(self, is_revision=False):
         """
@@ -422,9 +433,12 @@ class AgentManager:
         with open(f"prompt_pool/{self.task}.py") as file:
             template_code = file.read()        
         # code-based execution
+        
+        ### 모델 수정
+        coder= "coder-llm"
         ops_llama = OperationAgent(
             user_requirements=self.user_requirements,
-            llm=self.llm,
+            llm=coder,                               # self.llm : mistal
             code_path=self.code_path,
             device=self.device,
         )
@@ -435,51 +449,26 @@ class AgentManager:
         )
         self.money['Operation'] = ops_llama.money
         return ops_result
-
+    
     def generate_reply(
         self,
         user_prompt,
         system_prompt=basic_profile,
-        return_content=False,                       # True면 return 값이 llm순수 텍스트, False면 응답구조(메타데이터)
+        return_content=False,
         system_use=False,
         caller_id=None
     ):
-        """
-        AgentManager, DataAgent, ModelAgent 등 모든 에이전트들이 공통적으로 LLM에게 “질문 → 답변”을 요청할 때 사용하는 핵심 유틸 함수
-        LLM에게 질문하고, 답변을 받아, 대화 히스토리를 업데이트하는 역할
-        
-        주어진 프롬프트(user_prompt) + 시스템 프롬프트(system_prompt) -> LLM -> 응답(response)
-        
-        self.chats :  현재 Agent가 유지 중인 전체 대화 기록 (대화 히스토리) :: 리스트로 저장됨
-        
-        return ::
-        reply(str)   LLM이 생성한 응답구조(메타데이터)
-        
-        
-        log 
-        ### 과거 대화 기록을 LLM input에 복원하는 것
-        # n_calls max_lenght == self.chats의 수
-        
-        """
         n_calls = 0
         self.chats.append({"role": "user", "content": user_prompt})
         messages = [{"role": "system", "content": system_prompt}]
-        
-        test_trriger = False
+
         for msg in self.chats:
-            
-            if msg["role"] in ["function", "tool"]:                 
-                print(f"@@@@@@@@@@@@@@@ 챗 확인하기 :\n {msg}\n@@@@@@@@@@@@@@@@@@@@\n")
-                test_trriger = True
+            if msg["role"] in ["function", "tool"]:
                 n_calls = n_calls + 1
             if n_calls > 0:
                 messages.append(msg)
             else:
-                messages.append({"role": msg["role"], "content": msg["content"]})   
-        
-        if test_trriger :
-            raise SystemExit("⛔ generate_reply 중단: LLM 호출 직전에서 종료됨")
-        ## LLM 호출 
+                messages.append({"role": msg["role"], "content": msg["content"]})
         retry = 0
         response = None
         while retry < 5:
@@ -489,7 +478,7 @@ class AgentManager:
                 )
                 break
             except Exception as e:
-                print_message("system :: Error Type :: Manager - generate_reply", e)
+                print_message("system", e)
                 retry += 1
                 continue
         
@@ -497,18 +486,110 @@ class AgentManager:
             reply = response.choices[0].message.content.strip() if return_content else response
         else:
             reply = ''
-            print("generate_reply에서 5회 이상 시도 - 응답 없음(빈 값)")
         # add a new response message
-        ### 대화 기록 갱신
-        # system_use=False일 때만 대화 기록에 추가함
-        # "내부적인 LLM 호출" (ex. 데이터 검증용 등)은 기록하지 않음
         if not system_use and response:
             self.chats.append(dict(response.choices[0].message))
         
-        ## 비용 기록
         if caller_id and response:
             self.money[caller_id] = response.usage.to_dict(mode='json')
         return reply
+    
+    # def generate_reply(
+    #     self,
+    #     user_prompt,
+    #     system_prompt=basic_profile,
+    #     return_content=False,                       # True면 return 값이 llm순수 텍스트, False면 응답구조(메타데이터)
+    #     system_use=False,
+    #     caller_id=None
+    # ):
+    #     """
+    #     ### 가장 많이 수정한 함수
+    #     [LLM 질문 → 응답 → 기록] 함수
+        
+    #     1.사용자 프롬프트(user_prompt)와 시스템 프롬프트(system_prompt)를 LLM 입력 메시지(messages)로 변환.
+    #     2.LLM호출해서 응답(response) 받음.
+    #     3.받은 응답을 대화 히스토리(self.chats)에 추가 :: self.chats = []로 초기 설정했음
+        
+    #     return ::
+    #     reply(str)   LLM이 생성한 응답구조(메타데이터)
+        
+    #     ISSUE :
+    #     대화 히스토리를 모두 기록해서 chat에 넘길 수 없음(context길이 제한)
+    #     트릭이 필요함. 
+        
+    #     """
+    #     # vLLM 모델 자동 전환
+    #     switch_model(self.llm)
+        
+    #     n_calls = 0
+    #     self.chats.append({"role": "user", "content": user_prompt})
+
+    #     # system 메시지로 초기화
+    #     messages = [{"role": "system", "content": system_prompt}]
+
+    #     # 이전 채팅 순서 점검용
+    #     last_role = 'system'
+
+    #     for msg in self.chats:
+    #         role = msg.get("role")
+    #         content = msg.get("content", "")
+
+    #         # function/tool 메시지 처리
+    #         if role in ["function", "tool"]:
+    #             n_calls += 1
+
+    #         # role 순서 점검: system 이후에는 user → assistant → user → assistant 패턴
+    #         if last_role == 'system' and role == 'user':
+    #             messages.append({"role": role, "content": content})
+    #             last_role = role
+    #         elif last_role == 'user' and role == 'assistant':
+    #             messages.append({"role": role, "content": content})
+    #             last_role = role
+    #         elif last_role == 'assistant' and role == 'user':
+    #             messages.append({"role": role, "content": content})
+    #             last_role = role
+    #         else:
+    #             # 순서가 올바르지 않으면 skip
+    #             continue
+
+    #     print(f"messages 갯수?:{len(messages)}\n")
+    #     print(messages)
+        
+    #     ## LLM 호출 
+    #     retry = 0
+    #     response = None
+    #     while retry < 5:
+    #         try:
+    #             response = get_client(self.llm).chat.completions.create(
+    #                 model=self.model, messages=messages, temperature=0.3
+    #             )
+    #             break
+    #         except Exception as e:
+    #             print_message("system :: Error Type :: Manager - generate_reply", e)
+    #             retry += 1
+    #             continue
+        
+    #     if response:
+    #         # StarCoder 대응
+    #         if hasattr(response.choices[0], "message"):
+    #             reply = response.choices[0].message.content
+    #         else:
+    #             reply = getattr(response.choices[0], "text", "")
+    #         reply = reply.strip() if return_content else response
+    #     else:
+    #         reply = ''
+    #         print("generate_reply에서 5회 이상 시도 - 응답 없음(빈 값)")
+    #     # add a new response message
+    #     ### 대화 기록 갱신
+    #     # system_use=False일 때만 대화 기록에 추가함
+    #     # "내부적인 LLM 호출" (ex. 데이터 검증용 등)은 기록하지 않음
+    #     if not system_use and response:
+    #         self.chats.append(dict(response.choices[0].message) if hasattr(response.choices[0], "message") else {"role": "assistant", "content": reply})
+
+    #     ## 비용 기록
+    #     if caller_id and response:
+    #         self.money[caller_id] = response.usage.to_dict(mode='json')
+    #     return reply
 
     def _is_relevant(self, msg):
         """
@@ -635,6 +716,7 @@ class AgentManager:
                 print(f"@@@@@@@@@@@@@@@@@@@@@@@@@@@@ 1. INIT 단계(확인용) 시작 위치\n")
                 # display user's input prompt
                 self.chats.append({"role": "user", "content": prompt})
+                print("-----------------------------")
                 print_message("user", prompt)
                 
                 """
@@ -673,6 +755,7 @@ class AgentManager:
                     ########### 1-1-3. LLM이 JSON 내용을 한 문단으로 요약하는 단계(PLAN 단계 바로 전) :: request_summary
                     #######      user_requirements가 이미 있음.
                     if is_enough or self.verification == False:
+                        print("~~~~~~~~~~~~~~~")
                         start_time = time.time()
                         messages = [
                             {"role": "system", "content": agent_profile},
@@ -684,6 +767,7 @@ class AgentManager:
                         retry = 0
                         while retry < 5:
                             try:
+                                print(f" 확인~~~~~~ {self.llm}")
                                 res = get_client(self.llm).chat.completions.create(
                                     model=self.model, messages=messages, temperature=0.3
                                 )
@@ -995,6 +1079,7 @@ class AgentManager:
                             system_use=True,
                             caller_id='manager_code_revision'
                         )
+                        ### 5. EXEC 단계 ########### Operation Agent에게 실제로 코드 수행
                         self.state = "EXEC"
                         self.n_revise = self.n_revise - 1
                         self.timer['code_revision'] = time.time() - start_time

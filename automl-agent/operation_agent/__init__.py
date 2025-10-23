@@ -5,48 +5,7 @@ from configs import AVAILABLE_LLMs
 from utils import print_message, get_client
 from operation_agent.execution import execute_script
 
-# agent_profile = """You are a helpful assistant."""
-
-# agent_profile = """You are a helpful assistant. You have the following main responsibilities to complete.
-# 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
-# 2. Write effective Python codes to preprocess the retrieved dataset.
-# 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
-# 4. Write efficient Python codes to train/finetune the retrieved model.
-# 5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
-# 6. Write Python codes to build the web application demo using the Gradio library.
-# 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
-# """
-
-# agent_profile = """You are an MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for production-level deployment, given any datasets and models. You have the following main responsibilities to complete.
-# 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
-# 2. Write effective Python codes to preprocess the retrieved dataset.
-# 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
-# 4. Write efficient Python codes to train/finetune the retrieved model.
-# 5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
-# 6. Write Python codes to build the web application demo using the Gradio library.
-# 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
-# """
-
-# agent_profile = """You an experienced MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for production-level deployment, given any datasets and models. You have the following main responsibilities to complete.
-# 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
-# 2. Write effective Python codes to preprocess the retrieved dataset.
-# 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
-# 4. Write efficient Python codes to train/finetune the retrieved model.
-# 5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
-# 6. Write Python codes to build the web application demo using the Gradio library.
-# 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
-# """
-
-# full pipeline
-# agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for production-level deployment, given any datasets and models. You have the following main responsibilities to complete.
-# 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
-# 2. Write effective Python codes to preprocess the retrieved dataset.
-# 3. Write precise Python codes to retrieve/load the given model and optimize it with the suggested hyperparameters.
-# 4. Write efficient Python codes to train/finetune the retrieved model.
-# 5. Write suitable Python codes to prepare the trained model for deployment. This step may include model compression and conversion according to the target inference platform.
-# 6. Write Python codes to build the web application demo using the Gradio library.
-# 7. Run the model evaluation using the given Python functions and summarize the results for validation againts the user's requirements.
-# """
+import time
 
 # test용
 agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for model training and saving, given any datasets and models. You have the following main responsibilities to complete.
@@ -70,6 +29,7 @@ class OperationAgent:
         self.code_path = code_path
         self.device = device
         self.money = {}
+        
 
     def self_validation(self, filename):
         """
@@ -82,13 +42,17 @@ class OperationAgent:
         """
         실제 수행 : LLM과 실제 Python 실행(subprocess)을 연결하는 중심부
         ## full_pipeline : False :: 모델링 파이프라인 (데이터 가져오기부터 모델 저장까지)
+        Operation 단계는 qwen_coder 모델 사용 후 다시 mistral로 복귀
         """
     
         print_message(
             self.agent_type,
             f"I am implementing the following instruction:\n\r{code_instructions}",
         )
-
+        from utils.switch_model import switch_model
+        print(f"[OperationAgent] 🔄 Switching model: mistral → qwen_coder")
+        switch_model(self.llm)
+        
         log = "Nothing. This is your first attempt."
         error_logs = []
         code = code  # if a template/skeleton code is provided
@@ -96,7 +60,6 @@ class OperationAgent:
         completion = None
         action_result = ""
         rcode = -1
-        
         
         while iteration < n_attempts:
             try:
@@ -132,15 +95,15 @@ class OperationAgent:
                     {"role": "system", "content": agent_profile},
                     {"role": "user", "content": exec_prompt},
                 ]
+                print("재확인 ::: self.model : ",self.model)
                 res = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )
-                ############################ 2. LLM이 Python 코드를 생성 ######################## 원하는 모양새로 나올까..
+                ############################ 2. LLM이 Python 코드를 생성
                 raw_completion = res.choices[0].message.content.strip()
                 completion = raw_completion.split("```python")[1].split("```")[0]
                 self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
 
-                ### ?????? 오류가 여기서 잡히나?
                 if not completion.strip(" \n"):
                     print("### ?????? 오류가 여기서 잡히나?")
                     continue
@@ -172,6 +135,11 @@ class OperationAgent:
                 print_message(self.agent_type, f"===== Retry: {iteration} =====")
                 print_message(self.agent_type, f"Executioin error occurs: {e}")
             continue
+        
+        # 모델 복귀
+        print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
+        switch_model("prompt-llm")
+        
         if not completion:
             completion = ""
 

@@ -49,6 +49,8 @@ class OperationAgent:
             self.agent_type,
             f"I am implementing the following instruction:\n\r{code_instructions}",
         )
+        print("------------------🚀-------🚀--------🚀-------------------")
+        
         from utils.switch_model import switch_model
         print(f"[OperationAgent] 🔄 Switching model: mistral → qwen_coder")
         switch_model(self.llm)
@@ -95,7 +97,7 @@ class OperationAgent:
                     {"role": "system", "content": agent_profile},
                     {"role": "user", "content": exec_prompt},
                 ]
-                print("재확인 ::: self.model : ",self.model)
+                # print("재확인 ::: self.model : ",self.model)
                 res = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )

@@ -196,6 +196,35 @@ class AgentManager:
         self.money = {}
         
         self.current_vllm_model = "mistral"                 # 수정
+           
+    def check_message_sequence(messages):
+        last_role = None
+        for i, msg in enumerate(messages):
+            role = msg["role"]
+
+            # ✅ system은 맨 처음에만 허용
+            if role == "system" and i != 0:
+                raise ValueError(f"❌ Invalid message order: 'system' found at index {i}. Only allowed at position 0.")
+
+            # ⚠️ function/tool 메시지는 ChatCompletion API 입력에서 비표준 → 경고
+            if role in ["function", "tool"]:
+                print(f"⚠️ [WARNING] '{role}' message at index {i}: {msg}")
+
+            # ❌ user/assistant 순서 깨짐 감지
+            if last_role and role == last_role:
+                print("🚨 [BROKEN SEQUENCE DETECTED]")
+                print(f"   Index: {i}")
+                print(f"   Previous role: {last_role}")
+                print(f"   Current role : {role}")
+                print(f"   Offending message: {msg}")
+                print(f"   Previous message: {messages[i-1]}")
+                raise ValueError(f"❌ Role sequence broken at index {i}: '{role}' repeated.")
+
+            last_role = role
+
+        # ✅ 통과 시 로그
+        print("✅ Message sequence OK (no role conflict).")
+        return True
         
     def switch_vllm_model(self, target_model: str):
         """현재 vLLM 모델이 target_model과 다르면 전환"""
@@ -458,8 +487,9 @@ class AgentManager:
         system_use=False,
         caller_id=None
     ):
+        ################################################# 챗 순서 이슈가 여기서 발생하는 것 같음
         n_calls = 0
-        self.chats.append({"role": "user", "content": user_prompt})
+        self.chats.append({"role": "user", "content": user_prompt})             # 여기에 유저 입력값을 넣음. chats에는 이전 기록이 있다가 마지막에 유저의 입력이 입력됨.
         messages = [{"role": "system", "content": system_prompt}]
 
         for msg in self.chats:
@@ -473,6 +503,7 @@ class AgentManager:
         response = None
         while retry < 5:
             try:
+                check_message_sequence(messages)
                 response = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )
@@ -988,12 +1019,16 @@ class AgentManager:
                 
                 self.n_attempts += 1
                 self.state = "POST_EXEC"
+                
+                print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 5. EXEC 단계(확인용) 끝나는 위치\n")
 
             ############ 6. POST_EXEC 단계 ########### 마지막
             elif self.state == "POST_EXEC":                
                 # Post-(Code)Execution Verification stage
                 print(f"@@@@@@@@@@@@@@@@@@@@@@@@@@@@ 6. POST_EXEC 단계(확인용) 시작 위치\n")
+                
                 if self.implementation_result["rcode"] == 0:
+                    print("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ 6. POST_EXEC 단계 : rcode == 0")
                     start_time = time.time()
                     verification_prompt = f"""As the project manager, please carefully verify whether the given Python code and results satisfy the user's requirements.
                     

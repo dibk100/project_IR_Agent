@@ -1,7 +1,11 @@
 # Experiments_AutoML Agent 💽
 - models : 
-    - mistralai/Mistral-7B-Instruct-v0.3
-    - bigcode/starcoder2-3b
+    - mistralai/Mistral-7B-Instruct-v0.3 ( main모델로 활용 )
+    - gemini-2.5-flash ( api 활용해야해서 보류 )
+
+- coder models :
+    - bigcode/starcoder2-3b ( 성능 낮음 )
+    - Qwen/Qwen2.5-Coder-7B-Instruct ( coder 모델로 활용 )
 - dataset : 
     - Tabular Classification Banana Quality
 - fast-TEST:

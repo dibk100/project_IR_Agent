@@ -24,7 +24,7 @@ np.random.seed(SEED)
 # Define device for model operations
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_PATH = "_experiments/datasets"  # Path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparameter tuning, deployment, and evaluation
+DATASET_PATH = "_experiments/datasets"  # path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparamter tuning, deployment, and evaluation
 
 # Custom Dataset class
 class TabularDataset(Dataset):

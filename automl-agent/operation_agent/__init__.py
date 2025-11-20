@@ -3,7 +3,7 @@ import shutil
 
 from configs import AVAILABLE_LLMs
 from utils import print_message, get_client
-from operation_agent.execution import execute_script
+from operation_agent.execution import docker_execute_script     # 수정 execute_script
 
 import time
 
@@ -35,7 +35,7 @@ class OperationAgent:
         """
         생성한 코드를 확인
         """
-        rcode, log = execute_script(filename, device=self.device)
+        rcode, log = docker_execute_script(filename, device=self.device)
         return rcode, log
 
     def implement_solution(self, code_instructions, full_pipeline=False, code="", n_attempts=5):

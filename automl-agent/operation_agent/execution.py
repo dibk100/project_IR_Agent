@@ -56,3 +56,63 @@ def execute_script(script_name, work_dir = ".", device="0"):
         print("++++", "Wrong!")
         # raise Exception(f"Something went wrong in executing {script_name}: {e}. Please check if it is ready to be executed.")
         return -1, f"Something went wrong in executing {script_name}: {e}. Please check if it is ready to be executed."
+    
+
+def docker_execute_script(script_name, work_dir=".", device="0",
+                          image="automl-runtime:latest"):
+    """
+    실행을 도커 기반으로 대체한 버전
+    """
+    script_path = os.path.join(work_dir, script_name)
+    if not os.path.exists(script_path):
+        return -1, f"The file {script_path} does not exist."
+
+    # docker run 커맨드
+    cmd = [
+        "docker", "run", "--rm",
+        "--gpus", f"device={device}",
+        "-v", f"{os.path.abspath(work_dir)}:/workspace",
+        image,
+        "python", "-u", f"/workspace/{script_name}"
+    ]
+
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True
+    )
+
+    stdout_lines = []
+    stderr_lines = []
+
+    selector = selectors.DefaultSelector()
+    selector.register(process.stdout, selectors.EVENT_READ)
+    selector.register(process.stderr, selectors.EVENT_READ)
+
+    # 실시간 로그 읽기
+    while process.poll() is None and selector.get_map():
+        events = selector.select(timeout=1)
+        for key, _ in events:
+            line = key.fileobj.readline()
+            if key.fileobj == process.stdout:
+                stdout_lines.append(line)
+            else:
+                stderr_lines.append(line)
+
+    # 남은 로그 처리
+    for line in process.stdout:
+        stdout_lines.append(line)
+    for line in process.stderr:
+        stderr_lines.append(line)
+
+    return_code = process.returncode
+
+    # 에러/성공 기준 정리
+    if return_code != 0:
+        observation = "".join(stderr_lines)
+    else:
+        observation = "".join(stdout_lines)
+
+    if observation == "" and return_code == 0:
+        observation = "".join(stderr_lines)
+
+    return return_code, "The script has been executed. Here is the output:\n" + observation

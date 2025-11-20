@@ -1,6 +1,12 @@
 
 import os, random, time, json
+
+# Define GPU location
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 import torch
+
 import numpy as np
 import pandas as pd
 import gradio as gr
@@ -15,11 +21,10 @@ random.seed(SEED)
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 
-# Define GPU location
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# Define device for model operations
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_PATH = "_experiments/datasets"  # Path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparameter tuning, deployment, and evaluation
+DATASET_PATH = "_experiments/datasets"  # path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparamter tuning, deployment, and evaluation
 
 # Custom Dataset class
 class TabularDataset(Dataset):
@@ -147,7 +152,7 @@ def main():
     """
 
     # Step 1. Retrieve or load a dataset from hub (if available) or user's local storage (if given)
-    dataset_path = "_experiments/datasets/your_dataset.csv"  # Replace with actual dataset path
+    dataset_path = "path_to_your_dataset.csv"  # Replace with actual dataset path
     train_dataset, val_dataset, test_dataset, tokenizer = preprocess_data(dataset_path)
 
     # Step 2. Train the retrieved/loaded model using the defined "train_model" function

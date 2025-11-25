@@ -11,11 +11,12 @@ import torch
 import numpy as np
 import pandas as pd
 import gradio as gr
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score, f1_score
+
+# TODO: import other required library here, including libraries for datasets and (pre-trained) models like HuggingFace and Kaggle APIs. If the required module is not found, you can directly install it by running `pip install your_module`.
 from torch.utils.data import DataLoader, Dataset
-from transformers import AutoTokenizer, AutoModelForSequenceClassification, Trainer, TrainingArguments
+from sklearn.metrics import accuracy_score, f1_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
 
 SEED = 42
 random.seed(SEED)
@@ -25,126 +26,109 @@ np.random.seed(SEED)
 # Define device for model operations
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-DATASET_PATH = "_experiments/datasets"  # path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparamter tuning, deployment, and evaluation
-
-# Custom Dataset class
-class TabularDataset(Dataset):
-    def __init__(self, X, y, tokenizer=None, max_length=512):
-        self.X = X
-        self.y = y
-        self.tokenizer = tokenizer
-        self.max_length = max_length
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx):
-        text = self.X[idx]
-        label = self.y[idx]
-
-        encoding = self.tokenizer.encode_plus(
-            text,
-            add_special_tokens=True,
-            max_length=self.max_length,
-            return_token_type_ids=False,
-            padding='max_length',
-            truncation=True,
-            return_attention_mask=True,
-            return_tensors='pt'
-        )
-
-        return {
-            'input_ids': encoding['input_ids'].flatten(),
-            'attention_mask': encoding['attention_mask'].flatten(),
-            'labels': torch.tensor(label, dtype=torch.long)
-        }
+DATASET_PATH = "./agent_workspace/datasets"  # path for saving and loading dataset(s) (or the user's uploaded dataset) for preprocessing, training, hyperparamter tuning, deployment, and evaluation
 
 # Data preprocessing and feature engineering
-def preprocess_data(dataset_path):
-    # Load dataset
-    df = pd.read_csv(dataset_path)
+def preprocess_data(data):
+    # Normalize or standardize the features using MinMaxScaler from sklearn.preprocessing:
+    scaler = MinMaxScaler()
+    for column in data.columns:
+        data[column] = scaler.fit_transform(data[column].values.reshape(-1, 1))
 
-    # Split dataset into features and target
-    X = df.drop('target', axis=1).values
-    y = df['target'].values
+    # Handle outliers by removing them using the Interquartile Range (IQR):
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    data = data[(data > lower_bound) & (data < upper_bound)]
 
-    # Preprocessing steps
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    # Verify there are no missing values as specified. If missing values are found, you can choose to either remove the entire row or fill the missing values with a suitable replacement (e.g., mean, median, or mode).
+    data = data.dropna()
 
-    # Split dataset into train, validation, and test sets
-    X_train, X_temp, y_train, y_temp = train_test_split(X_scaled, y, test_size=0.3, random_state=SEED)
-    X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.5, random_state=SEED)
+    return data
 
-    # Tokenize data
-    tokenizer = AutoTokenizer.from_pretrained('bert-base-uncased')
-    train_dataset = TabularDataset(X=X_train, y=y_train, tokenizer=tokenizer)
-    val_dataset = TabularDataset(X=X_val, y=y_val, tokenizer=tokenizer)
-    test_dataset = TabularDataset(X=X_test, y=y_test, tokenizer=tokenizer)
+class TabularDataset(Dataset):
+    def __init__(self, data, target_column):
+        self.features = data.drop(target_column, axis=1).values.astype(np.float32)
+        self.labels = data[target_column].values.astype(np.float32).reshape(-1, 1)
 
-    return train_dataset, val_dataset, test_dataset, tokenizer
+    def __len__(self):
+        return len(self.features)
 
-def train_model(train_dataset, val_dataset, tokenizer):
-    # Load pre-trained model
-    model = AutoModelForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=len(np.unique(train_dataset.y)))
+    def __getitem__(self, idx):
+        return self.features[idx], self.labels[idx]
 
-    # Define training arguments
-    training_args = TrainingArguments(
-        output_dir='./results',
-        num_train_epochs=3,
-        per_device_train_batch_size=8,
-        per_device_eval_batch_size=8,
-        warmup_steps=500,
-        weight_decay=0.01,
-        logging_dir='./logs',
-    )
+def train_model(model, train_loader, valid_loader, epochs=100):
+    criterion = nn.BCELoss()
+    optimizer = optim.SGD(model.parameters(), lr=0.01)
 
-    # Initialize trainer
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
-    )
+    for epoch in range(epochs):
+        model.train()
+        for batch_features, batch_labels in train_loader:
+            optimizer.zero_grad()
+            outputs = model(batch_features)
+            loss = criterion(outputs, batch_labels)
+            loss.backward()
+            optimizer.step()
 
-    # Train model
-    trainer.train()
+        model.eval()
+        with torch.no_grad():
+            val_loss = 0.0
+            correct = 0
+            total = 0
+            for batch_features, batch_labels in valid_loader:
+                outputs = model(batch_features)
+                val_loss += criterion(outputs, batch_labels).item()
+                pred = (outputs > 0.5).float()
+                correct += (pred == batch_labels).sum().item()
+                total += batch_labels.size(0)
+
+            val_loss /= len(valid_loader)
+            val_accuracy = correct / total
+
+        print(f'Epoch [{epoch+1}/{epochs}], Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.4f}')
 
     return model
 
-def evaluate_model(model, test_dataset):
-    # Evaluate model
-    trainer = Trainer(
-        model=model,
-        eval_dataset=test_dataset,
-    )
-    results = trainer.evaluate()
+def evaluate_model(model, test_loader):
+    model.eval()
+    with torch.no_grad():
+        test_loss = 0.0
+        correct = 0
+        total = 0
+        for batch_features, batch_labels in test_loader:
+            outputs = model(batch_features)
+            test_loss += criterion(outputs, batch_labels).item()
+            pred = (outputs > 0.5).float()
+            correct += (pred == batch_labels).sum().item()
+            total += batch_labels.size(0)
 
-    # Extract performance scores
+        test_loss /= len(test_loader)
+        test_accuracy = correct / total
+
     performance_scores = {
-        'ACC': results['eval_accuracy'],
-        'F1': results['eval_f1']
+        'ACC': test_accuracy,
+        'F1': f1_score(test_labels.cpu().numpy().flatten(), (outputs > 0.5).cpu().numpy().flatten())
     }
 
     return performance_scores
 
-def prepare_model_for_deployment(model):
-    # Save model
-    model.save_pretrained('./agent_workspace/trained_models')
-
+def prepare_model_for_deployment():
+    # No specific steps needed for deployment in this case
     return model
 
 def deploy_model():
-    # Deploy model using Gradio
-    def predict(text):
-        inputs = tokenizer(text, return_tensors="pt")
-        outputs = model(**inputs)
-        predictions = torch.argmax(outputs.logits, dim=-1)
-        return predictions.item()
+    # Deploy the model using Gradio
+    def predict(features):
+        features = torch.tensor(features, dtype=torch.float32).unsqueeze(0)
+        with torch.no_grad():
+            output = model(features)
+        return output.item()
 
-    demo = gr.Interface(fn=predict, inputs="text", outputs="label")
-    demo.launch()
-    return demo.url
+    iface = gr.Interface(fn=predict, inputs="text", outputs="number")
+    url_endpoint = iface.launch()
+    return url_endpoint
 
 # The main function to orchestrate the data loading, data preprocessing, feature engineering, model training, model preparation, model deployment, and model evaluation
 def main():
@@ -153,26 +137,54 @@ def main():
     """
 
     # Step 1. Retrieve or load a dataset from hub (if available) or user's local storage (if given)
-    dataset_path = "path_to_your_dataset.csv"  # Replace with actual dataset path
-    train_dataset, val_dataset, test_dataset, tokenizer = preprocess_data(dataset_path)
+    dataset_path = os.path.join(DATASET_PATH, "banana_quality.csv")
+    data = pd.read_csv(dataset_path)
 
-    # Step 2. Train the retrieved/loaded model using the defined "train_model" function
-    model = train_model(train_dataset, val_dataset, tokenizer)
+    # Step 2. Create a train-valid-test split of the data by splitting the `dataset` into train_loader, valid_loader, and test_loader.
+    # Here, the train_loader contains 70% of the `dataset`, the valid_loader contains 20% of the `dataset`, and the test_loader contains 10% of the `dataset`.
+    X_train, X_val, y_train, y_val = train_test_split(data.drop('Quality', axis=1), data['Quality'], test_size=0.3, random_state=42)
+    X_test, y_test = train_test_split(X_val, y_val, test_size=0.5, random_state=42)
 
-    # Step 3. Evaluate the trained model using the defined "evaluate_model" function
-    model_performance = evaluate_model(model, test_dataset)
+    train_dataset = TabularDataset(X_train, 'Quality')
+    valid_dataset = TabularDataset(X_val, 'Quality')
+    test_dataset = TabularDataset(X_test, 'Quality')
 
-    # Step 4. Compress and convert the trained model according to a given deployment platform using the defined "prepare_model_for_deployment" function
-    deployable_model = prepare_model_for_deployment(model)
+    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+    valid_loader = DataLoader(valid_dataset, batch_size=32, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
-    # Step 5. Deploy the model using the defined "deploy_model" function
+    # Step 3. With the split dataset, run data preprocessing and feature engineering (if applicable) using the "preprocess_data" function you defined
+    processed_data = preprocess_data(data)
+
+    # Step 4. Define required model. You may retrieve model from available hub or library along with pretrained weights (if any).
+    # If pretrained or predefined model is not available, please create the model according to the given user's requirements below using PyTorch and relevant libraries.
+    class LogisticRegression(nn.Module):
+        def __init__(self, input_size, output_size):
+            super(LogisticRegression, self).__init__()
+            self.linear = nn.Linear(input_size, output_size)
+
+        def forward(self, x):
+            out = self.linear(x)
+            return torch.sigmoid(out)
+
+    model = LogisticRegression(input_size=processed_data.shape[1], output_size=1).to(device)
+
+    # Step 5. train the retrieved/loaded model using the defined "train_model" function
+    # TODO: on top of the model training, please run hyperparamter optimization based on the suggested hyperparamters and their values before proceeding to the evaluation step to ensure model's optimality
+
+    model = train_model(model, train_loader, valid_loader)
+
+    # Step 6. evaluate the trained model using the defined "evaluate_model" function
+    model_performance = evaluate_model(model, test_loader)
+
+    # Step 7. compress and convert the trained model according to a given deployment platform using the defined "prepare_model_for_deployment" function
+    deployable_model = prepare_model_for_deployment()
+
+    # Step 8. deploy the model using the defined "deploy_model" function
     url_endpoint = deploy_model()
 
     return (
-        train_dataset,
-        val_dataset,
-        test_dataset,
-        tokenizer,
+        processed_data,
         model,
         deployable_model,
         url_endpoint,
@@ -180,5 +192,5 @@ def main():
     )
 
 if __name__ == "__main__":
-    train_dataset, val_dataset, test_dataset, tokenizer, model, deployable_model, url_endpoint, model_performance = main()
+    processed_data, model, deployable_model, url_endpoint, model_performance = main()
     print("Model Performance on Test Set:", model_performance)

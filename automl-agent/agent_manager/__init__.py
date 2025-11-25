@@ -489,12 +489,17 @@ class AgentManager:
     ):
         ################################################# 챗 순서 이슈가 여기서 발생하는 것 같음
         n_calls = 0
-        self.chats.append({"role": "user", "content": user_prompt})             # 여기에 유저 입력값을 넣음. chats에는 이전 기록이 있다가 마지막에 유저의 입력이 입력됨.
+        # --- FIX 1: prevent user/user duplicates ---
+        if not self.chats or self.chats[-1]["role"] != "user":
+            self.chats.append({"role": "user", "content": user_prompt})
+        else:
+            print("[WARNING] consecutive user prevented")
+
         messages = [{"role": "system", "content": system_prompt}]
 
         for msg in self.chats:
             if msg["role"] in ["function", "tool"]:
-                n_calls = n_calls + 1
+                n_calls += 1
             if n_calls > 0:
                 messages.append(msg)
             else:
@@ -503,7 +508,7 @@ class AgentManager:
         response = None
         while retry < 5:
             try:
-                check_message_sequence(messages)
+                # check_message_sequence(messages)
                 response = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )
@@ -513,114 +518,19 @@ class AgentManager:
                 retry += 1
                 continue
         
-        if response:
-            reply = response.choices[0].message.content.strip() if return_content else response
-        else:
-            reply = ''
-        # add a new response message
+        reply = response.choices[0].message.content.strip() if (response and return_content) else response or ''
+        
+        # --- FIX 2: prevent assistant/assistant duplicates ---
         if not system_use and response:
-            self.chats.append(dict(response.choices[0].message))
+            new_msg = dict(response.choices[0].message)
+            if not self.chats or self.chats[-1]["role"] != "assistant":
+                self.chats.append(new_msg)
+            else:
+                print("[WARNING] consecutive assistant prevented")
         
         if caller_id and response:
             self.money[caller_id] = response.usage.to_dict(mode='json')
         return reply
-    
-    # def generate_reply(
-    #     self,
-    #     user_prompt,
-    #     system_prompt=basic_profile,
-    #     return_content=False,                       # True면 return 값이 llm순수 텍스트, False면 응답구조(메타데이터)
-    #     system_use=False,
-    #     caller_id=None
-    # ):
-    #     """
-    #     ### 가장 많이 수정한 함수
-    #     [LLM 질문 → 응답 → 기록] 함수
-        
-    #     1.사용자 프롬프트(user_prompt)와 시스템 프롬프트(system_prompt)를 LLM 입력 메시지(messages)로 변환.
-    #     2.LLM호출해서 응답(response) 받음.
-    #     3.받은 응답을 대화 히스토리(self.chats)에 추가 :: self.chats = []로 초기 설정했음
-        
-    #     return ::
-    #     reply(str)   LLM이 생성한 응답구조(메타데이터)
-        
-    #     ISSUE :
-    #     대화 히스토리를 모두 기록해서 chat에 넘길 수 없음(context길이 제한)
-    #     트릭이 필요함. 
-        
-    #     """
-    #     # vLLM 모델 자동 전환
-    #     switch_model(self.llm)
-        
-    #     n_calls = 0
-    #     self.chats.append({"role": "user", "content": user_prompt})
-
-    #     # system 메시지로 초기화
-    #     messages = [{"role": "system", "content": system_prompt}]
-
-    #     # 이전 채팅 순서 점검용
-    #     last_role = 'system'
-
-    #     for msg in self.chats:
-    #         role = msg.get("role")
-    #         content = msg.get("content", "")
-
-    #         # function/tool 메시지 처리
-    #         if role in ["function", "tool"]:
-    #             n_calls += 1
-
-    #         # role 순서 점검: system 이후에는 user → assistant → user → assistant 패턴
-    #         if last_role == 'system' and role == 'user':
-    #             messages.append({"role": role, "content": content})
-    #             last_role = role
-    #         elif last_role == 'user' and role == 'assistant':
-    #             messages.append({"role": role, "content": content})
-    #             last_role = role
-    #         elif last_role == 'assistant' and role == 'user':
-    #             messages.append({"role": role, "content": content})
-    #             last_role = role
-    #         else:
-    #             # 순서가 올바르지 않으면 skip
-    #             continue
-
-    #     print(f"messages 갯수?:{len(messages)}\n")
-    #     print(messages)
-        
-    #     ## LLM 호출 
-    #     retry = 0
-    #     response = None
-    #     while retry < 5:
-    #         try:
-    #             response = get_client(self.llm).chat.completions.create(
-    #                 model=self.model, messages=messages, temperature=0.3
-    #             )
-    #             break
-    #         except Exception as e:
-    #             print_message("system :: Error Type :: Manager - generate_reply", e)
-    #             retry += 1
-    #             continue
-        
-    #     if response:
-    #         # StarCoder 대응
-    #         if hasattr(response.choices[0], "message"):
-    #             reply = response.choices[0].message.content
-    #         else:
-    #             reply = getattr(response.choices[0], "text", "")
-    #         reply = reply.strip() if return_content else response
-    #     else:
-    #         reply = ''
-    #         print("generate_reply에서 5회 이상 시도 - 응답 없음(빈 값)")
-    #     # add a new response message
-    #     ### 대화 기록 갱신
-    #     # system_use=False일 때만 대화 기록에 추가함
-    #     # "내부적인 LLM 호출" (ex. 데이터 검증용 등)은 기록하지 않음
-    #     if not system_use and response:
-    #         self.chats.append(dict(response.choices[0].message) if hasattr(response.choices[0], "message") else {"role": "assistant", "content": reply})
-
-    #     ## 비용 기록
-    #     if caller_id and response:
-    #         self.money[caller_id] = response.usage.to_dict(mode='json')
-    #     return reply
 
     def _is_relevant(self, msg):
         """

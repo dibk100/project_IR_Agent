@@ -3,7 +3,7 @@ import shutil
 
 from configs import AVAILABLE_LLMs
 from utils import print_message, get_client
-from operation_agent.execution import docker_execute_script     # 수정 execute_script
+from operation_agent.execution import docker_execute_script,auto_install_packages_docker     # 수정 execute_script
 
 import time
 
@@ -118,8 +118,11 @@ class OperationAgent:
                 code = completion                       ## 생성된 코드 입력될텐데?
                 #print(">>>>>>>>>>>>>> 확인용 :\n",code)
                 
+                auto_install_packages_docker(filename, work_dir=self.root_path, device=str(self.device))
+                
                 ############################## 4. 진짜 실행 ::: self_validation -> execute_script(얘가 수행됨)
                 rcode, log = self.self_validation(filename)
+                
                 if rcode == 0:
                     action_result = log
                     break

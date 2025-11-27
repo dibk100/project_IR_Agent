@@ -140,6 +140,13 @@ class AgentManager:
         self.chats = []                                         # generate_reply() :: Agent가 유지 중인 전체 대화 기록 (대화 히스토리)
         self.state = "INIT"                     # 초기 상태로 시작
         
+        # 통합관리용
+        self.failed_packages = {
+            "plan_failure": [],
+            "execution_failure": []
+        }
+        self.experiment_logs = []
+        
         # Plan and Result
         if plans != None:
             f = open(plans)
@@ -627,14 +634,9 @@ class AgentManager:
         - prompt: 사용자가 처음 입력한 요청 (ex: “MNIST 분류 모델 만들어줘”)
         - plan_path: 계획 결과를 저장할 경로 (옵션)
         - instruction_path: 코드 생성 지침을 저장할 경로 (옵션)
-        
-        Q. pool
-        Q. input() 는 어디서 나온거지?
-        
         """
         
         last_msg = prompt
-        pool = Pool(self.n_plans)           # multiprocessing 파일에 정의되는 거 같은데 못찾음
         
         start_time = time.time() 
         init_time = time.time() # init time
@@ -835,6 +837,8 @@ class AgentManager:
                         self.action_results[i]["pass"] = result
                         if result:
                             self.is_solution_found = True
+                        else :
+                            self.failed_packages["plan_failure"].append(self.plans[i])
 
                     if self.is_solution_found:
                         ###################### 5. EXEC 단계
@@ -873,40 +877,37 @@ class AgentManager:
                 3. implementation_result : implement_solution함수 통해서 Operation Agent가 코드 작성(여기서 skeleton code활용해서 틀 채움)
                 """
                 print(f"@@@@@@@@@@@@@@@@@@@@@@@@@@@@ 5. EXEC 단계(확인용) 시작 위치\n")
-                if not self.code_instruction:
+                
+                # pass된 plan만 모아서 실행
+                pass_plans = [p for p in self.action_results if p["pass"]]
+                if not pass_plans:
+                    print("No valid plan to execute. Moving to REV.")
+                    self.state = "REV"
+                    return
+                
+                for i, plan in enumerate(pass_plans):
                     start_time = time.time()
-                    
-                    data_plan_for_execution = ""
-                    model_plan_for_execution = ""
-                    for action in self.action_results:
-                        if action["pass"]:
-                            data_plan_for_execution = (
-                                data_plan_for_execution + action["data"] + "\n"
-                            )
-                            model_plan_for_execution = (
-                                model_plan_for_execution + action["model"] + "\n"
-                            )
 
-                    # Summarize the passed plan for operation llama to write and execute the code
-                    upload_path = (
-                        f"This is the retrievable data path: {self.data_path}."
-                        if self.data_path
-                        else ""
-                    )
-                    summary_prompt = f"""As the project manager, please carefully read and understand the following instructions suggested by data scientists and machine learning engineers. Then, select the best solution for the given user's requirements.
-                    
-                    - Instructions from Data Scientists
-                    {data_plan_for_execution}
-                    If there is no predefined data split or the data scientists suggest the data split other than train 70%, validation 20%, and test 10%, please use 70%, 20%, and 10% instead for consistency across different tasks. {upload_path}
-                    You should exclude every suggestion related to data visualization as you will be unable to see it.
-                    - Instructions from Machine Learning Engineers
-                    {model_plan_for_execution}                    
-                    - User's Requirements
+                    # plan 기반 code_instruction 생성
+                    data_plan = plan["data"]
+                    model_plan = plan["model"]
+                    upload_path = f"This is the retrievable data path: {self.data_path}." if self.data_path else ""
+
+                    summary_prompt = f"""
+                    As the project manager, carefully read the following plan and user's requirements, 
+                    then provide detailed instructions for MLOps engineers to implement code. Do not write code yourself.
+
+                    - Data Plan
+                    {data_plan}
+
+                    - Model Plan
+                    {model_plan}
+
+                    - User Requirements
                     {self.req_summary}
-                    
-                    Note that you must select only ONE promising solution (i.e., one data processing pipeline and one model from the top-{num2words(self.n_candidates)} models) based on the above suggestions.
-                    After choosing the best solution, give detailed instructions and guidelines for MLOps engineers who will write the code based on your instructions. Do not write the code by yourself. Since PyTorch is preferred for implementing deep learning and neural networks models, please guide the MLOPs engineers accordingly.
-                    Make sure your instructions are sufficient with all essential information (e.g., complete path for dataset source and model location) for any MLOps or ML engineers to enable them to write the codes using existing libraries and frameworks correctly."""
+
+                    {upload_path}
+                    """
                     self.code_instruction = self.generate_reply(
                         system_prompt=agent_profile,
                         user_prompt=summary_prompt,
@@ -914,24 +915,36 @@ class AgentManager:
                         system_use=True,
                         caller_id='manager_code_instruction'
                     )
-                    self.timer['code_instruction'] = time.time() - start_time
                     
-                    if instruction_path:
-                        with open(f"{instruction_path}/code_instruction.txt", "w") as f:
-                            f.write(self.code_instruction)
+                    # 자동 재실행 루프
+                    self.n_revise = max(self.n_revise, 1)
+                    while self.n_revise > 0:
+                        # 코드 생성 및 실행
+                        self.implementation_result = self.implement_solution(self.code_instruction)
+                        self.next_task_input = self.implementation_result["action_result"]  # 다음 작업 인풋으로 연결
 
-                start_time = time.time()
-                ### 위에서 code_instruction(코드 생성 지침문, 프롬프트)를 활용해서 실제 수행(코드 생성)
-                ### 실제 코드가 작성 및 생성됨 : implementation_result
-                self.implementation_result = self.implement_solution(self.code_instruction)
-                print_message('system', f'{self.code_path}, <<< END CODING, TIME USED: {time.time() - init_time} SECS >>>')
-                self.timer['implementation'] = time.time() - start_time
-                
-                self.n_attempts += 1
+                        if self.implementation_result["rcode"] == 0:
+                            print(f"Plan {i} executed successfully.")
+                            break  # 성공하면 다음 plan
+                        else:
+                            print(f"Plan {i} failed. Attempting to revise instruction...")
+                            # LLM으로 instruction 패치
+                            self.code_instruction = self.revise_instruction(
+                                prev_instruction=self.code_instruction,
+                                code=self.implementation_result["code"],
+                                error_logs=self.implementation_result["error_logs"]
+                            )
+                            self.n_revise -= 1
+
+                    else:  # while 루프 종료 후에도 실패
+                        print(f"Plan {i} failed after all revisions.")
+                        self.failed_packages["execution_failure"].append(self.code_instruction)
+                        continue  # 다음 plan 시도
+
                 self.state = "POST_EXEC"
-                
-                print(f">>>>>>>>>>>>>>>>>>>>>>>>>>>>>> 5. EXEC 단계(확인용) 끝나는 위치\n")
-
+                self.timer['implementation'] = time.time() - start_time
+                print(f">>>>>>>>> EXEC 단계 끝 <<<<<<<<")
+            
             ############ 6. POST_EXEC 단계 ########### 마지막
             elif self.state == "POST_EXEC":                
                 # Post-(Code)Execution Verification stage
@@ -981,6 +994,8 @@ class AgentManager:
                     self.timer['implementation_verification'] = time.time() - start_time
                     self.money['manager_implementation_verification'] = res.usage.to_dict(mode='json')
                 else:
+                    self.failed_packages["execution_failure"].append(self.code_instruction)
+                    
                     if self.n_revise >= 0:
                         start_time = time.time()
                         print_message(

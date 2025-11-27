@@ -1,9 +1,9 @@
 import os
-import shutil
+import re
 
 from configs import AVAILABLE_LLMs
 from utils import print_message, get_client
-from operation_agent.execution import docker_execute_script,auto_install_packages_docker     # 수정 execute_script
+from operation_agent.execution import auto_install_packages_persistent, ensure_persistent_container, docker_exec_script_persistent
 
 import time
 
@@ -18,7 +18,7 @@ agent_profile = """You are the world's best MLOps engineer of an automated machi
 """
 
 class OperationAgent:
-    def __init__(self, user_requirements, llm, code_path, device=0):
+    def __init__(self, user_requirements, llm, code_path, device=0, container_name="automl_worker"):
         # setup Farm Manager
         self.agent_type = "operation"
         self.llm = llm
@@ -29,13 +29,18 @@ class OperationAgent:
         self.code_path = code_path
         self.device = device
         self.money = {}
-        
+        # Persistent Docker container 초기화
+        self.container_name = ensure_persistent_container(
+            container_name=container_name,
+            device=self.device,
+            work_dir=self.root_path
+        )
 
     def self_validation(self, filename):
         """
         생성한 코드를 확인
         """
-        rcode, log = docker_execute_script(filename, device=self.device)
+        rcode, log = docker_exec_script_persistent(filename, container_name=self.container_name, timeout = 120)
         return rcode, log
 
     def implement_solution(self, code_instructions, full_pipeline=False, code="", n_attempts=5):
@@ -63,9 +68,11 @@ class OperationAgent:
         action_result = ""
         rcode = -1
         
+        failed_packages = []
+        
         while iteration < n_attempts:
             try:
-                ##################### 1. 수행 프롬프트 : LLM에게 “이런 instruction대로 코드를 써봐” 요청
+                ## 1. 수행 프롬프트 : LLM에게 '이런 instruction대로 코드를 써봐' 요청
                 exec_prompt = """Carefully read the following instructions to write Python code for {} task.
                 {}
                 
@@ -97,30 +104,43 @@ class OperationAgent:
                     {"role": "system", "content": agent_profile},
                     {"role": "user", "content": exec_prompt},
                 ]
-                # print("재확인 ::: self.model : ",self.model)
+                
                 res = get_client(self.llm).chat.completions.create(
                     model=self.model, messages=messages, temperature=0.3
                 )
-                ############################ 2. LLM이 Python 코드를 생성
+                ## 2. LLM이 Python 코드를 생성
                 raw_completion = res.choices[0].message.content.strip()
-                completion = raw_completion.split("```python")[1].split("```")[0]
+                match = re.search(r"```python(.*?)```", raw_completion, re.DOTALL)
+                completion = match.group(1).strip() if match else raw_completion.strip()
                 self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
 
                 if not completion.strip(" \n"):
                     print("### ?????? 오류가 여기서 잡히나?")
+                    iteration += 1
                     continue
                 
-                ############################# 3. 코드 저장
-                filename = f"{self.root_path}{self.code_path}_{iteration}.py"
+                ## 3. 코드 저장
+                # filename = f"{self.root_path}{self.code_path}_{iteration}.py"
+                filename = os.path.join(self.root_path, f"{self.code_path}_{iteration}.py")
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, "wt") as file:
                     file.write(completion)
-                code = completion                       ## 생성된 코드 입력될텐데?
-                #print(">>>>>>>>>>>>>> 확인용 :\n",code)
+                code = completion                       ## 생성된 코드 입력
                 
-                auto_install_packages_docker(filename, work_dir=self.root_path, device=str(self.device))
+                # auto install packages in persistent docker
+                failed_packages += auto_install_packages_persistent(filename, container_name=self.container_name)
                 
-                ############################## 4. 진짜 실행 ::: self_validation -> execute_script(얘가 수행됨)
+                if failed_packages:
+                    # 기록 강화
+                    self.experiment_logs.append({
+                        "step": "package_install",
+                        "script": filename,
+                        "failed_packages": failed_packages
+                    })
+                    self.money[f'PackageInstall_{iteration}'] = failed_packages
+                    print_message(self.agent_type, f"⚠️ Package installation failed for: {failed_packages}")
+                                
+                ## 4. 진짜 실행 :
                 rcode, log = self.self_validation(filename)
                 
                 if rcode == 0:
@@ -139,7 +159,9 @@ class OperationAgent:
                 iteration += 1
                 print_message(self.agent_type, f"===== Retry: {iteration} =====")
                 print_message(self.agent_type, f"Executioin error occurs: {e}")
-            continue
+                
+        if iteration >= n_attempts:
+            print_message(self.agent_type, "Max attempts reached. Operation failed.")
         
         # 모델 복귀
         print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
@@ -152,4 +174,13 @@ class OperationAgent:
             self.agent_type,
             f"I executed the given plan and got the follow results:\n\n{action_result}",
         )
-        return {"rcode": rcode, "action_result": action_result, "code": completion, "error_logs": error_logs}
+        return {
+            "rcode": rcode,
+            "action_result": action_result,
+            "code": completion,
+            "error_logs": error_logs,
+            "failed_packages": failed_packages,
+            "experiment_logs": self.experiment_logs  # 추가
+        }
+        ## LLM 호출 비용/사용량까지 모니터링하고 싶다면 "money": self.money   # 추가해야함
+        ## 비용 추적 및 실험 비교를 원한다면..

@@ -23,18 +23,36 @@ PACKAGE_MAP = {
     "optuna": "optuna"
 }
 
+def extract_imports(code: str):
+    imports = set()
+    
+    # handle "import a", "import a, b", "import a.b"
+    for line in re.findall(r'^\s*import\s+(.+)$', code, re.MULTILINE):
+        mods = [m.strip().split('.')[0] for m in line.split(',')]
+        imports.update(mods)
+    
+    # handle "from a.b import c, d"
+    for line in re.findall(r'^\s*from\s+(\S+)\s+import', code, re.MULTILINE):
+        imports.add(line.split('.')[0])
+
+    return imports
+
 def is_std_lib(pkg_name: str) -> bool:
     if pkg_name in sys.builtin_module_names:
         return True
     try:
         spec = importlib.util.find_spec(pkg_name)
-        if spec is None:
-            return False
-        # origin이 None이거나 Python 기본 경로에 있으면 표준 라이브러리
-        return spec.origin is None or "site-packages" not in spec.origin
-    except ModuleNotFoundError:
+        if spec is None or spec.origin is None:
+            return True
+        
+        origin = spec.origin
+        return (
+            "site-packages" not in origin and
+            "dist-packages" not in origin
+        )
+    except Exception:
         return False
-    
+
 def ensure_persistent_container(container_name="automl_worker", image="automl-runtime:latest", device="0", work_dir="."):
     # Check container exists
     check_container = subprocess.run(
@@ -43,11 +61,23 @@ def ensure_persistent_container(container_name="automl_worker", image="automl-ru
     )
     if container_name not in check_container.stdout:
         print(f"[Docker] Creating persistent container: {container_name}")
+        
         create_cmd = [
-            "docker", "create", "--gpus", f"device={device}",
+            "docker", "create",
+            "--gpus", f"device={device}",
+
+            # 기존 workspace mount
             "-v", f"{os.path.abspath(work_dir)}:/workspace",
+
+            # HDD 캐시 마운트 (호스트: /mnt/hdd/hf_cache → 컨테이너: /workspace/hf_cache)
+            "-v", "/mnt/hdd/hf_cache:/workspace/hf_cache",
+
+            # HuggingFace 캐시를 HDD로 지정
+            "-e", "HF_HOME=/workspace/hf_cache",
+
             "--name", container_name,
-            image, "sleep", "infinity"
+            image,
+            "sleep", "infinity"
         ]
         try:
             subprocess.run(create_cmd, check=True)

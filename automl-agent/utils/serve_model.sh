@@ -4,6 +4,9 @@
 MODEL_NAME=$1
 PORT=8000
 
+export HF_HOME=/mnt/hdd/hf_cache
+export HF_TOKEN=$(grep HF_TOKEN .env | cut -d '=' -f2)
+
 # logs 디렉토리 확인 및 생성
 mkdir -p logs
 
@@ -11,9 +14,9 @@ echo "🧹 Stopping old vLLM servers..."
 pkill -f "vllm.entrypoints.openai.api_server" 2>/dev/null
 
 if [ "$MODEL_NAME" == "mistral" ]; then
-    MODEL_PATH="/home/dibaeck/hf_cache/models--mistralai--Mistral-7B-Instruct-v0.3/snapshots/0d4b76e1efeb5eb6f6b5e757c79870472e04bd3a/"
+    MODEL_PATH="/mnt/hdd/hf_cache/models--mistralai--Mistral-7B-Instruct-v0.3/snapshots/0d4b76e1efeb5eb6f6b5e757c79870472e04bd3a/"
 elif [ "$MODEL_NAME" == "qwen_coder" ]; then
-    MODEL_PATH="/home/dibaeck/hf_cache/models--Qwen--Qwen2.5-Coder-7B-Instruct/snapshots/c03e6d358207e414f1eca0bb1891e29f1db0e242/"
+    MODEL_PATH="/mnt/hdd/hf_cache/models--Qwen--Qwen2.5-Coder-7B-Instruct/snapshots/c03e6d358207e414f1eca0bb1891e29f1db0e242/"
 
 else
     echo "❌ Unknown model: $MODEL_NAME"

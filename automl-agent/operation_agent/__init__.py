@@ -120,8 +120,8 @@ class OperationAgent:
                     continue
                 
                 ## 3. 코드 저장
-                # filename = f"{self.root_path}{self.code_path}_{iteration}.py"
-                filename = os.path.join(self.root_path, f"{self.code_path}_{iteration}.py")
+                filename = f"{self.root_path}{self.code_path}_{iteration}.py"
+                # filename = os.path.join(self.root_path, f"{self.code_path}_{iteration}.py")
                 os.makedirs(os.path.dirname(filename), exist_ok=True)
                 with open(filename, "wt") as file:
                     file.write(completion)

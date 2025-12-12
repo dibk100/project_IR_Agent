@@ -94,16 +94,26 @@ def ensure_persistent_container(container_name="automl_worker", image="automl-ru
         subprocess.run(["docker", "start", container_name], check=True)
     return container_name
 
-def auto_install_packages_persistent(script_path, container_name="automl_worker",retry=True):
+def auto_install_packages_persistent(script_path, container_name="automl_worker", retry=True, skip_packages=None):
     """
     Docker 내에서 필요한 패키지 설치.
     실패 시 1회 재시도 가능(retry=True).
+    
+    Args:
+        script_path (str): 스크립트 경로
+        container_name (str): Docker 컨테이너 이름
+        retry (bool): 설치 실패 시 재시도 여부
+        skip_packages (set): 이미 설치된 패키지 set (설치 건너뛰기용) ✅ 추가
     
     Returns:
         failed_packages (list): 설치 실패한 패키지 리스트
     """
     
     failed_packages = []  # 실패 패키지 기록
+    
+    # ✅ 추가: skip_packages가 None이면 빈 set으로 초기화
+    if skip_packages is None:
+        skip_packages = set()
     
     if not os.path.exists(script_path):
         raise FileNotFoundError(f"{script_path} does not exist")
@@ -115,12 +125,20 @@ def auto_install_packages_persistent(script_path, container_name="automl_worker"
     
     for pkg in packages:
         install_pkg = PACKAGE_MAP.get(pkg, pkg)
+        
+        # ✅ 추가: 이미 설치 확인된 패키지는 건너뛰기
+        if install_pkg in skip_packages:
+            print(f"[AutoInstaller] {install_pkg} already tracked as installed. Skipping check.")
+            continue
+        
         # check if installed
         check_cmd = ["docker", "exec", container_name, "python", "-c", f"import {pkg}"]
         result = subprocess.run(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if result.returncode == 0:
             print(f"[AutoInstaller] {install_pkg} already installed.")
+            skip_packages.add(install_pkg)  # ✅ 추가: 설치 확인된 패키지 추적
             continue
+        
         # install
         # 설치 시도
         for attempt in range(1, 3 if retry else 2):
@@ -128,6 +146,9 @@ def auto_install_packages_persistent(script_path, container_name="automl_worker"
                 print(f"[AutoInstaller] Installing {install_pkg} (attempt {attempt})...")
                 install_cmd = ["docker", "exec", container_name, "pip", "install", "--no-cache-dir", install_pkg]
                 subprocess.run(install_cmd, check=True)
+                # ✅ 추가: 설치 성공 시 추적
+                skip_packages.add(install_pkg)
+                print(f"[AutoInstaller] ✅ {install_pkg} installed successfully.")
                 # 설치 성공 시 break
                 break
             except subprocess.CalledProcessError as e:

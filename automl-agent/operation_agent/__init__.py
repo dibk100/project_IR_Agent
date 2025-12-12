@@ -5,8 +5,6 @@ from configs import AVAILABLE_LLMs
 from utils import print_message, get_client
 from operation_agent.execution import auto_install_packages_persistent, ensure_persistent_container, docker_exec_script_persistent
 
-import time
-
 # test용
 agent_profile = """You are the world's best MLOps engineer of an automated machine learning project (AutoML) that can implement the optimal solution for model training and saving, given any datasets and models. You have the following main responsibilities to complete.
 1. Write accurate Python codes to retrieve/load the given dataset from the corresponding source.
@@ -35,6 +33,7 @@ class OperationAgent:
             device=self.device,
             work_dir=self.root_path
         )
+        self.installed_packages = set()         # 설치된 패키지 추적
 
     def self_validation(self, filename):
         """
@@ -70,102 +69,108 @@ class OperationAgent:
         
         failed_packages = []
         
-        while iteration < n_attempts:
-            try:
-                ## 1. 수행 프롬프트 : LLM에게 '이런 instruction대로 코드를 써봐' 요청
-                exec_prompt = """Carefully read the following instructions to write Python code for {} task.
-                {}
-                
-                # Previously Written Code
-                ```python
-                {}
-                ```
-                
-                # Error from the Previously Written Code
-                {}
-                
-                Note that you need to write the python code for the {}. If saving model is required, you must save the trained model to "./agent_workspace/trained_models" directory.
-                Start the python code with "```python". Please ensure the completeness of the code so that it can be run without additional modifications.
-                If there is any error from the previous attempt, please carefully fix it first."""
-                pipeline = (
-                    "entire machine learning pipeline (from data retrieval to model deployment via Gradio)"
-                    if full_pipeline
-                    else "modeling pipeline (from data retrieval to model saving)"
-                )
-                exec_prompt = exec_prompt.format(
-                    self.user_requirements["problem"]["downstream_task"],
-                    code_instructions,
-                    code,                                   # 초기 코드 or 잘못 작성되었던 코드
-                    log,
-                    pipeline,
-                )
+        try :
+            while iteration < n_attempts:
+                try:
+                    ## 1. 수행 프롬프트 : LLM에게 '이런 instruction대로 코드를 써봐' 요청
+                    exec_prompt = """Carefully read the following instructions to write Python code for {} task.
+                    {}
+                    
+                    # Previously Written Code
+                    ```python
+                    {}
+                    ```
+                    
+                    # Error from the Previously Written Code
+                    {}
+                    
+                    Note that you need to write the python code for the {}. If saving model is required, you must save the trained model to "./agent_workspace/trained_models" directory.
+                    Start the python code with "```python". Please ensure the completeness of the code so that it can be run without additional modifications.
+                    If there is any error from the previous attempt, please carefully fix it first."""
+                    pipeline = (
+                        "entire machine learning pipeline (from data retrieval to model deployment via Gradio)"
+                        if full_pipeline
+                        else "modeling pipeline (from data retrieval to model saving)"
+                    )
+                    exec_prompt = exec_prompt.format(
+                        self.user_requirements["problem"]["downstream_task"],
+                        code_instructions,
+                        code,                                   # 초기 코드 or 잘못 작성되었던 코드
+                        log,
+                        pipeline,
+                    )
 
-                messages = [
-                    {"role": "system", "content": agent_profile},
-                    {"role": "user", "content": exec_prompt},
-                ]
-                
-                res = get_client(self.llm).chat.completions.create(
-                    model=self.model, messages=messages, temperature=0.3
-                )
-                ## 2. LLM이 Python 코드를 생성
-                raw_completion = res.choices[0].message.content.strip()
-                match = re.search(r"```python(.*?)```", raw_completion, re.DOTALL)
-                completion = match.group(1).strip() if match else raw_completion.strip()
-                self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
+                    messages = [
+                        {"role": "system", "content": agent_profile},
+                        {"role": "user", "content": exec_prompt},
+                    ]
+                    
+                    res = get_client(self.llm).chat.completions.create(
+                        model=self.model, messages=messages, temperature=0.3
+                    )
+                    ## 2. LLM이 Python 코드를 생성
+                    raw_completion = res.choices[0].message.content.strip()
+                    match = re.search(r"```python(.*?)```", raw_completion, re.DOTALL)
+                    completion = match.group(1).strip() if match else raw_completion.strip()
+                    self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
 
-                if not completion.strip(" \n"):
-                    print("### ?????? 오류가 여기서 잡히나?")
+                    if not completion.strip(" \n"):
+                        print("### ?????? 오류가 여기서 잡히나?")
+                        iteration += 1
+                        continue
+                    
+                    ## 3. 코드 저장
+                    filename = f"{self.root_path}/{self.code_path}_{iteration}.py"
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    with open(filename, "wt") as file:
+                        file.write(completion)
+                    code = completion                       ## 생성된 코드 입력
+                    
+                    # auto install packages in persistent docker
+                    new_failed = auto_install_packages_persistent(
+                        filename, 
+                        container_name=self.container_name,
+                        skip_packages=self.installed_packages
+                    )
+                    failed_packages.extend(new_failed)
+                    
+                    # ✅ 현재 iteration의 실패만 로깅
+                    if new_failed:
+                        self.experiment_logs.append({
+                            "step": "package_install",
+                            "iteration": iteration,  # iteration 번호 추가
+                            "script": filename,
+                            "failed_packages": new_failed  # 현재 iteration 실패만
+                        })
+                        self.money[f'PackageInstall_{iteration}'] = new_failed
+                        print_message(self.agent_type, f"⚠️ Package installation failed for: {new_failed}")
+                                    
+                    ## 4. 진짜 실행 :
+                    rcode, log = self.self_validation(filename)
+                    
+                    if rcode == 0:
+                        action_result = log
+                        break
+                    
+                    else:
+                        #### 실패
+                        log = log
+                        error_logs.append(log)
+                        action_result = log
+                        print_message(self.agent_type, f"I got this error (itr #{iteration}): {log}")
+                        iteration += 1                    
+                        # while문
+                except Exception as e:
                     iteration += 1
-                    continue
-                
-                ## 3. 코드 저장
-                filename = f"{self.root_path}{self.code_path}_{iteration}.py"
-                # filename = os.path.join(self.root_path, f"{self.code_path}_{iteration}.py")
-                os.makedirs(os.path.dirname(filename), exist_ok=True)
-                with open(filename, "wt") as file:
-                    file.write(completion)
-                code = completion                       ## 생성된 코드 입력
-                
-                # auto install packages in persistent docker
-                failed_packages += auto_install_packages_persistent(filename, container_name=self.container_name)
-                
-                if failed_packages:
-                    # 기록 강화
-                    self.experiment_logs.append({
-                        "step": "package_install",
-                        "script": filename,
-                        "failed_packages": failed_packages
-                    })
-                    self.money[f'PackageInstall_{iteration}'] = failed_packages
-                    print_message(self.agent_type, f"⚠️ Package installation failed for: {failed_packages}")
-                                
-                ## 4. 진짜 실행 :
-                rcode, log = self.self_validation(filename)
-                
-                if rcode == 0:
-                    action_result = log
-                    break
-                
-                else:
-                    #### 실패
-                    log = log
-                    error_logs.append(log)
-                    action_result = log
-                    print_message(self.agent_type, f"I got this error (itr #{iteration}): {log}")
-                    iteration += 1                    
-                    # while문
-            except Exception as e:
-                iteration += 1
-                print_message(self.agent_type, f"===== Retry: {iteration} =====")
-                print_message(self.agent_type, f"Executioin error occurs: {e}")
-                
-        if iteration >= n_attempts:
-            print_message(self.agent_type, "Max attempts reached. Operation failed.")
-        
-        # 모델 복귀
-        print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
-        switch_model("prompt-llm")
+                    print_message(self.agent_type, f"===== Retry: {iteration} =====")
+                    print_message(self.agent_type, f"Executioin error occurs: {e}")
+                    
+            if iteration >= n_attempts:
+                print_message(self.agent_type, "Max attempts reached. Operation failed.")
+        finally:
+            # 모델 복귀
+            print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
+            switch_model("prompt-llm")
         
         if not completion:
             completion = ""

@@ -30,8 +30,7 @@ class OperationAgent:
         # Persistent Docker container 초기화
         self.container_name = ensure_persistent_container(
             container_name=container_name,
-            device=self.device,
-            work_dir=self.root_path
+            device=self.device
         )
         self.installed_packages = set()         # 설치된 패키지 추적
 
@@ -56,7 +55,7 @@ class OperationAgent:
         print("------------------🚀-------🚀--------🚀-------------------")
         
         from utils.switch_model import switch_model
-        print(f"[OperationAgent] 🔄 Switching model: mistral → qwen_coder")
+        # print(f"[OperationAgent] 🔄 Switching model: mistral → qwen_coder")
         switch_model(self.llm)
         
         log = "Nothing. This is your first attempt."
@@ -70,10 +69,12 @@ class OperationAgent:
         failed_packages = []
         
         try :
+            filename = None
             while iteration < n_attempts:
                 try:
                     ## 1. 수행 프롬프트 : LLM에게 '이런 instruction대로 코드를 써봐' 요청
                     exec_prompt = """Carefully read the following instructions to write Python code for {} task.
+                    Ensure that all used libraries (e.g., torch, sklearn) are imported at the beginning of the script.
                     {}
                     
                     # Previously Written Code
@@ -84,7 +85,7 @@ class OperationAgent:
                     # Error from the Previously Written Code
                     {}
                     
-                    Note that you need to write the python code for the {}. If saving model is required, you must save the trained model to "./agent_workspace/trained_models" directory.
+                    Note that you need to write the python code for the {}. If saving model is required, you must save the trained model to "./trained_models" directory.
                     Start the python code with "```python". Please ensure the completeness of the code so that it can be run without additional modifications.
                     If there is any error from the previous attempt, please carefully fix it first."""
                     pipeline = (
@@ -114,13 +115,16 @@ class OperationAgent:
                     completion = match.group(1).strip() if match else raw_completion.strip()
                     self.money[f'Operation_Coding_{iteration}'] = res.usage.to_dict(mode='json')
 
-                    if not completion.strip(" \n"):
+                    if not completion.strip(" \n") or not completion.strip():
                         print("### ?????? 오류가 여기서 잡히나?")
                         iteration += 1
                         continue
                     
                     ## 3. 코드 저장
-                    filename = f"{self.root_path}/{self.code_path}_{iteration}.py"
+                    print(">>> code_path:", repr(self.code_path))
+                    print(">>> filename:", repr(filename))
+                    filename = os.path.join(self.root_path, f"{self.code_path}_{iteration}.py")
+                    
                     os.makedirs(os.path.dirname(filename), exist_ok=True)
                     with open(filename, "wt") as file:
                         file.write(completion)
@@ -146,7 +150,7 @@ class OperationAgent:
                         print_message(self.agent_type, f"⚠️ Package installation failed for: {new_failed}")
                                     
                     ## 4. 진짜 실행 :
-                    rcode, log = self.self_validation(filename)
+                    rcode, log = self.self_validation(os.path.basename(filename))
                     
                     if rcode == 0:
                         action_result = log
@@ -169,7 +173,7 @@ class OperationAgent:
                 print_message(self.agent_type, "Max attempts reached. Operation failed.")
         finally:
             # 모델 복귀
-            print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
+            # print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
             switch_model("prompt-llm")
         
         if not completion:

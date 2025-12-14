@@ -53,46 +53,89 @@ def is_std_lib(pkg_name: str) -> bool:
     except Exception:
         return False
 
-def ensure_persistent_container(container_name="automl_worker", image="automl-runtime:latest", device="0", work_dir="."):
-    # Check container exists
-    check_container = subprocess.run(
-        ["docker", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
-        capture_output=True, text=True
-    )
-    if container_name not in check_container.stdout:
-        print(f"[Docker] Creating persistent container: {container_name}")
+def ensure_persistent_container(container_name="automl_worker", image="automl-runtime:latest", device="0", work_dir="agent_workspace"):
+    """
+    Persistent Docker container 생성 또는 재사용
+    """
+    # 작업 디렉토리 절대 경로
+    work_dir_host = os.path.abspath(work_dir)
+    os.makedirs(work_dir_host, exist_ok=True)
+    
+    # 1. 컨테이너 존재 여부 확인
+    print(f"[Docker] Checking for container '{container_name}'...")
+    inspect_cmd = ["docker", "inspect", "-f", "{{.State.Status}}", container_name]
+    result = subprocess.run(inspect_cmd, capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        # 컨테이너가 존재하는 경우
+        status = result.stdout.strip()
+        print(f"[Docker] Container '{container_name}' exists. Status: {status}")
         
-        create_cmd = [
-            "docker", "create",
-            "--gpus", f"device={device}",
+        if status == "running":
+            print(f"[Docker] Container is already running.")
+            return container_name
+        elif status in ["exited", "created"]:
+            print(f"[Docker] Starting existing container...")
+            try:
+                subprocess.run(["docker", "start", container_name], check=True, capture_output=True)
+                print(f"[Docker] Container started successfully.")
+                return container_name
+            except subprocess.CalledProcessError as e:
+                # 시작 실패 시 컨테이너 삭제 후 재생성
+                print(f"[Docker] Failed to start container. Removing and recreating...")
+                subprocess.run(["docker", "rm", "-f", container_name], check=False)
+                # 아래 생성 로직으로 진행
+        else:
+            # 알 수 없는 상태면 삭제
+            print(f"[Docker] Container in unknown state '{status}'. Removing...")
+            subprocess.run(["docker", "rm", "-f", container_name], check=False)
+    else:
+        # 컨테이너가 없는 경우
+        print(f"[Docker] Container '{container_name}' does not exist.")
 
-            # 기존 workspace mount
-            "-v", f"{os.path.abspath(work_dir)}:/workspace",
-
-            # HDD 캐시 마운트 (호스트: /mnt/hdd/hf_cache → 컨테이너: /workspace/hf_cache)
-            "-v", "/mnt/hdd/hf_cache:/workspace/hf_cache",
-
-            # HuggingFace 캐시를 HDD로 지정
-            "-e", "HF_HOME=/workspace/hf_cache",
-
-            "--name", container_name,
-            image,
-            "sleep", "infinity"
-        ]
-        try:
-            subprocess.run(create_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"[Docker] Failed to create container: {e}")
-
-    # Start if not running
-    check_running = subprocess.run(
-        ["docker", "ps", "--filter", f"name={container_name}", "--format", "{{.Names}}"],
-        capture_output=True, text=True
+    # 2. 컨테이너 생성 (위에서 리턴되지 않은 경우 실행)
+    print(f"[Docker] Creating new container: {container_name}")
+    
+    # 이미지 존재 확인
+    check_image = subprocess.run(
+        ["docker", "images", "-q", image],
+        capture_output=True,
+        text=True
     )
-    if container_name not in check_running.stdout:
-        print(f"[Docker] Starting container: {container_name}")
-        subprocess.run(["docker", "start", container_name], check=True)
-    return container_name
+    
+    if not check_image.stdout.strip():
+        raise RuntimeError(
+            f"Docker image '{image}' not found. Please build it first:\n"
+            f"  docker build -t {image} ."
+        )
+    
+    create_cmd = [
+        "docker", "create",
+        "--gpus", f"device={device}",
+        "-v", f"{work_dir_host}:/workspace/agent_workspace",
+        "-v", "/mnt/hdd/hf_cache:/workspace/hf_cache",
+        "-e", "HF_HOME=/workspace/hf_cache",
+        "--workdir", "/workspace",            # 중요
+        "--name", container_name,
+        image,
+        "sleep", "infinity"
+    ]
+    
+    try:
+        subprocess.run(create_cmd, check=True, capture_output=True)
+        subprocess.run(["docker", "start", container_name], check=True, capture_output=True)
+        print(f"[Docker] Container '{container_name}' created and started successfully.")
+        return container_name
+    except subprocess.CalledProcessError as e:
+        error_msg = e.stderr.decode() if e.stderr else str(e)
+        raise RuntimeError(
+            f"[Docker] Failed to create container:\n{error_msg}\n"
+            f"Troubleshooting:\n"
+            f"  1. Check if image exists: docker images | grep {image}\n"
+            f"  2. Check GPU availability: nvidia-smi\n"
+            f"  3. Try without GPU: Remove '--gpus' option\n"
+            f"  4. Check existing containers: docker ps -a"
+        )
 
 def auto_install_packages_persistent(script_path, container_name="automl_worker", retry=True, skip_packages=None):
     """
@@ -144,7 +187,7 @@ def auto_install_packages_persistent(script_path, container_name="automl_worker"
         for attempt in range(1, 3 if retry else 2):
             try:
                 print(f"[AutoInstaller] Installing {install_pkg} (attempt {attempt})...")
-                install_cmd = ["docker", "exec", container_name, "pip", "install", "--no-cache-dir", install_pkg]
+                install_cmd = ["docker", "exec", "-u", "0", container_name, "pip", "install", "--no-cache-dir", install_pkg]
                 subprocess.run(install_cmd, check=True)
                 # ✅ 추가: 설치 성공 시 추적
                 skip_packages.add(install_pkg)
@@ -162,10 +205,12 @@ def docker_exec_script_persistent(script_name, container_name="automl_worker", t
     """
     Docker 내 Python 스크립트 실행 + timeout 처리
     :param timeout: 최대 실행 시간 (초)
+    모든 stdout / stderr를 EOF까지 캡처
+
     """
     
-    cmd = ["docker", "exec", "-w", "/workspace", container_name, "python", "-u", script_name]
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    cmd = ["docker", "exec", "-w", "/workspace/agent_workspace", container_name, "python", "-u", script_name]
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,bufsize=1)
     
     stdout_lines, stderr_lines = [], []
     selector = selectors.DefaultSelector()
@@ -173,27 +218,39 @@ def docker_exec_script_persistent(script_name, container_name="automl_worker", t
     selector.register(process.stderr, selectors.EVENT_READ)
     
     start_time = time.time()
-    while process.poll() is None and selector.get_map():
-        
+    while selector.get_map():
+        # timeout 체크
         if time.time() - start_time > timeout:
             process.kill()
             process.wait()
             return -1, f"Execution timed out after {timeout} seconds."
-        
-        
+
         for key, _ in selector.select(timeout=1):
             line = key.fileobj.readline()
+
+            # ✅ EOF 처리
             if not line:
+                selector.unregister(key.fileobj)
+                key.fileobj.close()
                 continue
-            if key.fileobj == process.stdout:
+
+            if key.fileobj is process.stdout:
                 stdout_lines.append(line)
-                print(line, end='')
+                print(line, end="")
             else:
                 stderr_lines.append(line)
-                print(line, end='')
-                
-    return_code = process.returncode
-    observation = "".join(stdout_lines if return_code == 0 else stderr_lines)
-    if observation == "" and return_code == 0:
+                print(line, end="")
+
+    # 스트림 다 읽은 뒤 프로세스 종료 보장
+    return_code = process.wait()
+
+    # observation 구성
+    if return_code == 0:
         observation = "".join(stdout_lines + stderr_lines)
-    return return_code, "The script has been executed. Here is the output:\n" + observation
+    else:
+        observation = "".join(stderr_lines if stderr_lines else stdout_lines)
+
+    return (
+        return_code,
+        "The script has been executed. Here is the output:\n" + observation
+    )

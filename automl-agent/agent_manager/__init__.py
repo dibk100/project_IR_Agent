@@ -193,9 +193,9 @@ class AgentManager:
         else:
             self.code_instruction = None
         if exp_configs:
-            self.code_path = f"/{self.llm}_{exp_configs.task}_{exp_configs.prompt_type}_{exp_configs.uid}"
+            self.code_path = f"{self.llm}_{exp_configs.task}_{exp_configs.prompt_type}_{exp_configs.uid}"
         else:
-            self.code_path = f"/{uid}_{self.llm}_p{self.n_plans}_{'rap' if self.rap else ''}_{'decomp' if self.decomp else ''}_{'ver' if self.verification else ''}_{'full' if self.full_pipeline else ''}"
+            self.code_path = f"{uid}_{self.llm}_p{self.n_plans}_{'rap' if self.rap else ''}_{'decomp' if self.decomp else ''}_{'ver' if self.verification else ''}_{'full' if self.full_pipeline else ''}"
         self.n_attempts = 0
         self.task = task
         self.inj = inj

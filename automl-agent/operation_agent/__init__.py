@@ -41,7 +41,7 @@ class OperationAgent:
         rcode, log = docker_exec_script_persistent(filename, container_name=self.container_name, timeout = 120)
         return rcode, log
 
-    def implement_solution(self, code_instructions, full_pipeline=False, code="", n_attempts=5):
+    def implement_solution(self, code_instructions, full_pipeline=False, code="", n_attempts=7):
         """
         실제 수행 : LLM과 실제 Python 실행(subprocess)을 연결하는 중심부
         ## full_pipeline : False :: 모델링 파이프라인 (데이터 가져오기부터 모델 저장까지)
@@ -55,7 +55,7 @@ class OperationAgent:
         print("------------------🚀-------🚀--------🚀-------------------")
         
         from utils.switch_model import switch_model
-        # print(f"[OperationAgent] 🔄 Switching model: mistral → qwen_coder")
+        # print(f"[OperationAgent] 🔄 Switching model: mistral → deepseek_coder")
         switch_model(self.llm)
         
         log = "Nothing. This is your first attempt."
@@ -173,7 +173,7 @@ class OperationAgent:
                 print_message(self.agent_type, "Max attempts reached. Operation failed.")
         finally:
             # 모델 복귀
-            # print(f"[OperationAgent] 🔁 Restoring model: qwen_coder → mistral")
+            # print(f"[OperationAgent] 🔁 Restoring model: deepseek_coder → mistral")
             switch_model("prompt-llm")
         
         if not completion:

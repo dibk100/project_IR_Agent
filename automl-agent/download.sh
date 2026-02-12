@@ -17,45 +17,46 @@ echo "📁 Cache directory set to $CACHE_DIR"
 
 python -c '
 import os
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
-model_name = "mistralai/Mistral-7B-Instruct-v0.3"
+model_name = "deepseek-ai/deepseek-coder-7b-instruct-v1.5"
 cache_dir = os.getenv("HF_HOME")
 
-print(f"Downloading {model_name} to {cache_dir}")
+print(f"🚀 Downloading {model_name} to {cache_dir} ...")
 
-# Tokenizer
 try:
-    tok = AutoTokenizer.from_pretrained(
+    tokenizer = AutoTokenizer.from_pretrained(
         model_name,
+        trust_remote_code=True,
+        use_fast=True,
         token=os.getenv("HF_TOKEN"),
         cache_dir=cache_dir
     )
-    print("Tokenizer downloaded.")
+    print("✔️ Tokenizer downloaded.")
 except Exception as e:
-    print("Tokenizer download failed:", e)
+    print("❌ Tokenizer download failed:", e)
     raise
 
-# Model
 try:
-    model = AutoModel.from_pretrained(
+    model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        device_map=None,   # 다운로드만 하므로 auto 불필요
-        use_safetensors=True,
+        trust_remote_code=True,
+        device_map=None,  # GPU 없이 다운로드만
         token=os.getenv("HF_TOKEN"),
-        cache_dir=cache_dir
+        cache_dir=cache_dir,
+        low_cpu_mem_usage=True  # 메모리 절약
     )
-    print("Model downloaded.")
+    print("✔️ Model downloaded.")
 except Exception as e:
-    print("Model download failed:", e)
+    print("❌ Model download failed:", e)
     raise
 
-print("All downloads complete.")
+print("✅ All downloads complete.")
 '
 
 if [ -d "/home/$USER/.cache/huggingface" ]; then
-  echo "Cleaning ~/.cache/huggingface ..."
-  rm -rf "/home/$USER/.cache/huggingface"
+    echo "🧹 Removing local HF cache..."
+    rm -rf "/home/$USER/.cache/huggingface"
 fi
 
-echo "Done!"
+echo "🎉 Done!"

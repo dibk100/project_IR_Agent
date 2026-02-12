@@ -4,18 +4,19 @@ import subprocess
 import time
 
 AVAILABLE_LLMs = {
-    "prompt-llm": {"model": "mistral", "base_url": "http://localhost:8000/v1"},
-    "coder-llm": {"model": "qwen_coder", "base_url": "http://localhost:8000/v1"},
+    "prompt-llm": {"model": "mistral", "base_url": "http://127.0.0.1:8000/v1"},
+    "coder-llm": {"model": "deepseek_coder", "base_url": "http://127.0.0.1:8000/v1"},
 }
 
-def wait_vllm_ready(base_url="http://localhost:8000/v1", timeout=120):
+def wait_vllm_ready(base_url="http://127.0.0.1:8000/v1", timeout=600):
     start = time.time()
     while time.time() - start < timeout:
         try:
             r = requests.get(f"{base_url}/models", timeout=3)
             if r.status_code == 200:
                 return True
-        except:
+        except Exception as e:
+            # print(f"Waiting for vLLM... {e}")
             pass
         time.sleep(3)
     raise RuntimeError("vLLM server did not become ready in time")

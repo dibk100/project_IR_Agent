@@ -486,6 +486,41 @@ class AgentManager:
         self.money['Operation'] = ops_llama.money
         return ops_result
     
+    def revise_instruction(self, prev_instruction, code, error_logs):
+        upload_path = (
+            f"This is the retrievable data path: {self.data_path}."
+            if self.data_path
+            else ""
+        )
+        summary_prompt = f"""As the project manager, you have provided an instruction that was not good enough for the MLOps engineer to write a correct code for the user's requirements.
+        Please carefully check your previous instruction, the written Python, the execution results, and the user's requirements.
+        
+        - Your Previous Instruction
+        {prev_instruction}
+        
+        - Python Code
+        ```python
+        {code}
+        ```
+        
+        - Code Execution Result (Error)
+        {error_logs}
+        
+        - User's Requirements
+        {self.user_requirements}
+        
+        {upload_path}
+        After you figure out the causes, give detailed instructions and guidelines for MLOps engineers who will write the code based on your instructions. Do not write the code by yourself.
+        Make sure your instructions are sufficient with all essential information (e.g., complete path for dataset source and model location) for any MLOps or ML engineers to enable them to write the codes using existing libraries and frameworks correctly."""
+        
+        return self.generate_reply(
+            system_prompt=agent_profile,
+            user_prompt=summary_prompt,
+            return_content=True,
+            system_use=True,
+            caller_id='manager_code_revision'
+        )
+    
     def generate_reply(
         self,
         user_prompt,

@@ -1,5 +1,5 @@
-# Project_IR_sketch 
-> 본 레포는 sLM_MAS 연구(1세대)이며, 고도화 연구는 [project_IR_sLM_MAS](https://github.com/dibk100/project_IR_sLM_MAS)에서 진행 중
+# Project_IR_sketch 🔍
+> 본 레포는 sLM_MAS 연구(1세대)이며, 고도화 연구는 [project_IR_sLM_MAS](https://github.com/dibk100/project_IR_sLM_MAS)(2026)에서 진행 중
 - **Type**: 개인 연구 프로젝트 (Independent Research)
 - **Subject**: OpenSourec sLM 기반 자율 에이전트 시스템 연구
 - **Focus**: AgentVerse, AutoML-Agent, LightAgent 논문 구현 및 확장형 sLM(OpenSourec) 기반 지능형 Agent 구조 설계
@@ -22,7 +22,7 @@
 - Goal 설정을 고정해서 LLM과의 성능 비교에 초점이 된 연구였음. 하지만 sLM, 심지어 open-source를 활용할 생각이었다면, 성능 비교가 아닌 다른 방향으로 초점을 맞춰야할 것 같음.
     - ✍🏻 선행 연구와 Key-Paper 선정이 문제였던 것 같음. paper-review할 때, Research Landscape를 구상하며 Positioning Prior Work를 정리하고 인사이트 얻기
 
-### 📚 논문 구현(related works)
+### 📚 논문 구현 작업(related works)
 - [AgentVerse (ICLR 2023)](https://github.com/dibk100/paper_agentverse)
 - [LightAgent (preprint 2025-09-10)](https://github.com/dibk100/paper_LightAgent)
 - [AutoML-Agent (ICML 2025)](https://github.com/dibk100/project_IR_Agent/tree/main/automl-agent)
